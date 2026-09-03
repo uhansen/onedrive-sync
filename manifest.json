@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "onedrive-sync",
+  "name": "OneDrive Sync",
+  "version": "0.1.0",
+  "author": "uhansen",
+  "description": "Monitor and control an external rclone OneDrive mount from the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "OneDrive Sync",
+    "description": "Status, reconnect, refresh, and folder controls for an rclone-backed OneDrive mount.",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 30,
+      "remoteName": "onedrive",
+      "mountPoint": "~/OneDrive",
+      "serviceUnit": "rclone-onedrive.service",
+      "rcAddr": "127.0.0.1:5572"
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 3600,
+        "step": 5,
+        "defaultValue": 30
+      },
+      {
+        "key": "remoteName",
+        "type": "string",
+        "label": "rclone remote name",
+        "defaultValue": "onedrive"
+      },
+      {
+        "key": "mountPoint",
+        "type": "string",
+        "label": "Mount point",
+        "defaultValue": "~/OneDrive"
+      },
+      {
+        "key": "serviceUnit",
+        "type": "string",
+        "label": "systemd user unit",
+        "defaultValue": "rclone-onedrive.service"
+      },
+      {
+        "key": "rcAddr",
+        "type": "string",
+        "label": "rclone RC address",
+        "defaultValue": "127.0.0.1:5572"
+      }
+    ]
+  }
+}

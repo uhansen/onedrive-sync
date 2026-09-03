@@ -101,3 +101,8 @@ Useful checks while iterating:
 omarchy plugin validate .
 python3 status.py onedrive ~/OneDrive rclone-onedrive.service 127.0.0.1:5572 25
 ```
+
+
+## License
+
+MIT

@@ -4,6 +4,7 @@
   "name": "OneDrive Sync",
   "version": "0.1.0",
   "author": "uhansen",
+  "license": "MIT",
   "description": "Monitor and control an external rclone OneDrive mount from the Omarchy bar.",
   "kinds": [
     "bar-widget"

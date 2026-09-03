@@ -37,6 +37,10 @@ Item {
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running
+  readonly property bool canToggle: serviceExists && !controlProcess.running
+  readonly property bool canSyncNow: installed && running && rcAvailable && !syncProcess.running && !statusProcess.running
+  readonly property bool canReconnect: installed && !authProcess.running
+  readonly property bool canOpenFolder: mountPointExpanded !== ""
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("status.py")).replace(/^file:\/\//, ""))
 
   property string _statusOutput: ""
@@ -137,7 +141,18 @@ Item {
   }
 
   function syncNow() {
-    if (syncProcess.running || !installed) return
+    if (!installed) return
+    if (!running) {
+      actionStatus = "Start the mount service first"
+      actionStatusTimer.restart()
+      return
+    }
+    if (!rcAvailable) {
+      actionStatus = "rclone RC is unavailable"
+      actionStatusTimer.restart()
+      return
+    }
+    if (syncProcess.running) return
     _syncOutput = ""
     _syncError = ""
     syncProcess.command = ["rclone", "rc", "--rc-addr", rcAddr, "vfs/refresh", "recursive=true"]

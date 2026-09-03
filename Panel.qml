@@ -27,9 +27,8 @@ Panel {
     "Checking queues"
   ]
   readonly property string heroPhraseText: activePhrases[phraseIndex % activePhrases.length]
-  readonly property string heroMeta: onedrive.active
-    ? (onedrive.pendingCount > 0 ? heroPhraseText : Model.statusSummary(onedrive.statusText, onedrive.pendingCount, onedrive.lastSyncTs))
-    : "Sync paused"
+  readonly property bool showHero: onedrive.installed || onedrive.serviceExists || onedrive.authenticated
+  readonly property string heroMeta: heroMetaText()
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
@@ -38,6 +37,29 @@ Panel {
   readonly property string toggleHint: onedrive.active ? "Pause the mount service" : "Resume the mount service"
   readonly property color barIconColor: onedrive.authenticated && onedrive.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && onedrive.serviceExists
+  readonly property string loginTitle: !onedrive.installed
+    ? "rclone is not installed"
+    : (onedrive.authenticated ? "Reconnect OneDrive" : "Authorize OneDrive")
+  readonly property string loginSubtitle: !onedrive.installed
+    ? "Install rclone and configure a OneDrive remote first"
+    : (!onedrive.serviceExists
+      ? "Create " + onedrive.serviceUnit + " after authorizing the remote"
+      : "Open rclone's OAuth flow in the browser")
+
+  function heroMetaText() {
+    if (onedrive.lastError !== "") return onedrive.lastError
+    if (!onedrive.installed) return "Install rclone to enable OneDrive control"
+    if (!onedrive.serviceExists) return "Create " + onedrive.serviceUnit + " to manage the mount"
+    if (!onedrive.authenticated) return "Authorize remote " + onedrive.remoteName
+    if (onedrive.active && onedrive.pendingCount > 0) return heroPhraseText
+    if (onedrive.active && !onedrive.mounted) return "Service active, waiting for mount"
+    if (onedrive.active) return Model.statusSummary(onedrive.statusText, onedrive.pendingCount, onedrive.lastSyncTs)
+    return "Sync paused"
+  }
+
+  function stateText(flag, yesText, noText) {
+    return flag ? yesText : noText
+  }
 
   function ensureCursor() {
     if (!onedrive.authenticated) {
@@ -248,7 +270,7 @@ Panel {
 
           Item {
             id: header
-            visible: onedrive.authenticated
+            visible: root.showHero
             width: parent.width
             implicitHeight: hero.implicitHeight
             readonly property bool ringVisible: root.headerHasCursor
@@ -257,7 +279,7 @@ Panel {
             PanelHero {
               id: hero
               width: parent.width
-              title: "OneDrive"
+              title: onedrive.authenticated ? "OneDrive" : "OneDrive setup"
               meta: root.heroMeta
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -309,30 +331,36 @@ Panel {
           }
 
           Column {
-            visible: onedrive.authenticated
+            visible: onedrive.authenticated || root.showHero
             width: parent.width
             spacing: Style.spacing.labelGap
 
             InfoPair { label: "Status"; value: onedrive.statusText }
             InfoPair { label: "Remote"; value: onedrive.remoteName }
+            InfoPair { label: "Unit"; value: onedrive.serviceUnit }
+            InfoPair { label: "Service"; value: root.stateText(onedrive.running, "Running", (onedrive.serviceExists ? "Stopped" : "Missing")) }
+            InfoPair { label: "Mounted"; value: root.stateText(onedrive.mounted, "Yes", "No") }
+            InfoPair { label: "Auth"; value: root.stateText(onedrive.authenticated, "Ready", "Required") }
+            InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable") }
             InfoPair { label: "Mount"; value: onedrive.mountPointExpanded }
             InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs) }
             InfoPair { label: "Pending"; value: String(onedrive.pendingCount) }
             InfoPair { label: "Queued"; value: Model.formatBytes(onedrive.bytesQueued) }
+            InfoPair { label: "Transferred"; value: Model.formatBytes(onedrive.transferredBytes) }
           }
 
           PanelSeparator {
-            visible: onedrive.authenticated
+            visible: onedrive.authenticated || root.showHero
             foreground: root.foreground
           }
 
           Column {
-            visible: onedrive.authenticated
+            visible: onedrive.authenticated || root.showHero
             width: parent.width
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "ACTIONS"
+              text: onedrive.authenticated ? "ACTIONS" : "NEXT STEPS"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -346,8 +374,14 @@ Panel {
                 rowIndex: 0
                 iconText: "󰑐"
                 title: "Sync now"
-                subtitle: onedrive.rcAvailable ? "Request a VFS refresh through rclone RC" : "Will fail until rclone RC is reachable"
-                enabled: onedrive.installed && !onedrive.busy
+                subtitle: !onedrive.installed
+                  ? "Install rclone first"
+                  : (!onedrive.running
+                    ? "Start " + onedrive.serviceUnit + " first"
+                    : (onedrive.rcAvailable
+                      ? "Request a VFS refresh through rclone RC"
+                      : "Enable --rc on the rclone service"))
+                enabled: onedrive.canSyncNow
               }
 
               ActionRow {
@@ -355,17 +389,19 @@ Panel {
                 rowIndex: 1
                 iconText: "󰉋"
                 title: "Open folder"
-                subtitle: "Open the OneDrive mount in Files"
-                enabled: onedrive.mountPointExpanded !== ""
+                subtitle: onedrive.mounted ? "Open the active OneDrive mount in Files" : "Open the configured mount folder"
+                enabled: onedrive.canOpenFolder
               }
 
               ActionRow {
                 width: parent.width
                 rowIndex: 2
                 iconText: "󰌋"
-                title: "Reconnect"
-                subtitle: "Start rclone's OAuth re-authorization flow"
-                enabled: onedrive.installed && !onedrive.busy
+                title: onedrive.authenticated ? "Reconnect" : "Authorize"
+                subtitle: onedrive.authenticated
+                  ? "Start rclone's OAuth re-authorization flow"
+                  : "Finish remote authorization without exposing tokens to QML"
+                enabled: onedrive.canReconnect
               }
             }
           }
@@ -412,6 +448,17 @@ Panel {
                   rowIndex: index
                 }
               }
+            }
+
+            Text {
+              visible: onedrive.authenticated || root.showHero
+              width: parent.width
+              textFormat: Text.PlainText
+              text: "Shortcuts: R refresh · P pause/resume · O open folder · C authorize"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              horizontalAlignment: Text.AlignHCenter
             }
           }
         }
@@ -485,7 +532,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           Layout.fillWidth: true
-          text: onedrive.installed ? "Reconnect OneDrive" : "rclone is not installed"
+          text: root.loginTitle
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -495,7 +542,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           Layout.fillWidth: true
-          text: onedrive.installed ? "Open rclone's OAuth flow in the browser" : "Install rclone and configure a OneDrive remote first"
+          text: root.loginSubtitle
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

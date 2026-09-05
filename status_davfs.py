@@ -4,7 +4,10 @@
 Mirrors status.py's contract and JSON shape so Model.js/Service.qml/Panel.qml
 can stay mostly backend-agnostic. This script never reads OAuth token
 contents -- only the non-secret `expires_at` timestamp from token.json -- and
-never sends credentials anywhere. The reachability probe is a bare HTTP
+never sends credentials anywhere. Presence of `refresh_token` is treated as
+authenticated: the daemon refreshes a dormant access token on the next
+WebDAV request, so an idle `expires_at` in the past is not a reconnect
+failure. The reachability probe is a bare HTTP
 request with no Authorization header; any response (even 401/403) counts as
 "reachable", only a connection failure/timeout counts as unreachable.
 """
@@ -97,7 +100,10 @@ def build_status(mount_point, daemon_unit, mount_unit, state_dir, davfs_url):
     token_present, expires_at = read_token_expiry(state_dir)
     now = int(time.time())
     token_expires_in_sec = max(0, expires_at - now) if token_present and expires_at > 0 else 0
-    authenticated = token_present and (expires_at == 0 or expires_at > now)
+    # Presence of refresh_token is enough: the daemon refreshes the short-lived
+    # access token on the next WebDAV request. An idle expired access token is
+    # not an auth failure and must not prompt reconnect.
+    authenticated = token_present
 
     daemon_reachable = probe_daemon(davfs_url) if daemon_running else False
 
@@ -106,8 +112,6 @@ def build_status(mount_point, daemon_unit, mount_unit, state_dir, davfs_url):
         errors.append("onedrive-davfs service is not running")
     if not token_present:
         errors.append("No token.json found; run the reconnect command")
-    elif not authenticated:
-        errors.append("OneDrive token has expired; run the reconnect command")
     if daemon_running and not daemon_reachable:
         errors.append("onedrive-davfs is running but not responding")
 
@@ -117,8 +121,6 @@ def build_status(mount_point, daemon_unit, mount_unit, state_dir, davfs_url):
         status_text = "Daemon stopped"
     elif not token_present:
         status_text = "Needs authentication"
-    elif not authenticated:
-        status_text = "Token expired"
     elif not mounted:
         status_text = "Daemon active, mount missing"
     elif not daemon_reachable:

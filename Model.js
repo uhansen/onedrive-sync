@@ -55,7 +55,7 @@ function formatBytes(bytes) {
 
 function formatDuration(seconds) {
   var value = Math.max(0, Math.floor(Number(seconds || 0)))
-  if (!isFinite(value) || value <= 0) return "expired"
+  if (!isFinite(value) || value <= 0) return "Ready (auto-refresh)"
   if (value < 60) return value + "s"
   var minutes = Math.floor(value / 60)
   if (minutes < 60) return minutes + "m"

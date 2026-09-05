@@ -54,6 +54,12 @@ Panel {
         ? "Create " + onedrive.serviceUnit + " after authorizing the remote"
         : "Open rclone's OAuth flow in the browser"))
 
+  function tokenExpiryText() {
+    var remaining = Number(onedrive.tokenExpiresInSec || 0)
+    if (!isFinite(remaining) || remaining <= 0) return Model.formatDuration(0)
+    return "expires in " + Model.formatDuration(remaining)
+  }
+
   function heroMetaText() {
     if (onedrive.lastError !== "") return onedrive.lastError
     if (onedrive.isDavfsBackend) {
@@ -362,7 +368,7 @@ Panel {
             InfoPair { label: "Auth"; value: root.stateText(onedrive.authenticated, "Ready", "Required") }
             InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable"); visible: !onedrive.isDavfsBackend }
             InfoPair { label: "Daemon"; value: root.stateText(onedrive.daemonReachable, "Reachable", "Unavailable"); visible: onedrive.isDavfsBackend }
-            InfoPair { label: "Token"; value: onedrive.authenticated ? ("expires in " + Model.formatDuration(onedrive.tokenExpiresInSec)) : "missing"; visible: onedrive.isDavfsBackend }
+            InfoPair { label: "Token"; value: onedrive.authenticated ? tokenExpiryText() : "missing"; visible: onedrive.isDavfsBackend }
             InfoPair { label: "Mount"; value: onedrive.mountPointExpanded }
             InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs); visible: !onedrive.isDavfsBackend }
             InfoPair { label: "Pending"; value: String(onedrive.pendingCount); visible: !onedrive.isDavfsBackend }

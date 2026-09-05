@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "uhansen",
   "license": "MIT",
-  "description": "Monitor and control an external rclone OneDrive mount from the Omarchy bar.",
+  "description": "Monitor and control an external OneDrive sync backend (rclone mount or the onedrive-davfs WebDAV daemon) from the Omarchy bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "OneDrive Sync",
-    "description": "Status, reconnect, refresh, and folder controls for an rclone-backed OneDrive mount.",
+    "description": "Status, reconnect, refresh, and folder controls for an rclone-backed or onedrive-davfs-backed OneDrive mount.",
     "category": "Files",
     "allowMultiple": false,
     "defaultSection": "right",
@@ -23,7 +23,13 @@
       "remoteName": "onedrive",
       "mountPoint": "~/OneDrive",
       "serviceUnit": "rclone-onedrive.service",
-      "rcAddr": "127.0.0.1:5572"
+      "rcAddr": "127.0.0.1:5572",
+      "backend": "rclone_mount",
+      "davfsUrl": "http://127.0.0.1:8765/",
+      "daemonServiceUnit": "onedrive-davfs.service",
+      "mountServiceUnit": "onedrive-davfs-mount.service",
+      "stateDir": "~/.local/state/onedrive-davfs",
+      "reconnectCommand": ""
     },
     "schema": [
       {
@@ -58,6 +64,52 @@
         "type": "string",
         "label": "rclone RC address",
         "defaultValue": "127.0.0.1:5572"
+      },
+      {
+        "key": "backend",
+        "type": "enum",
+        "label": "Backend",
+        "options": [
+          "rclone_mount",
+          "wasm_davfs"
+        ],
+        "defaultValue": "rclone_mount",
+        "description": "Which external OneDrive backend this plugin monitors and controls: an rclone VFS mount, or the onedrive-davfs Wasm WebDAV daemon mounted via davfs2."
+      },
+      {
+        "key": "davfsUrl",
+        "type": "string",
+        "label": "onedrive-davfs URL",
+        "defaultValue": "http://127.0.0.1:8765/",
+        "description": "Loopback URL of the onedrive-davfs daemon, used only for a reachability probe (no credentials are ever sent)."
+      },
+      {
+        "key": "daemonServiceUnit",
+        "type": "string",
+        "label": "onedrive-davfs systemd unit",
+        "defaultValue": "onedrive-davfs.service",
+        "description": "systemd --user unit running the onedrive-davfs daemon (wasmtime serve)."
+      },
+      {
+        "key": "mountServiceUnit",
+        "type": "string",
+        "label": "davfs2 mount systemd unit",
+        "defaultValue": "onedrive-davfs-mount.service",
+        "description": "Optional systemd --user unit that mounts the davfs2 volume. Leave blank if you mount via /etc/fstab instead."
+      },
+      {
+        "key": "stateDir",
+        "type": "path",
+        "label": "onedrive-davfs state directory",
+        "defaultValue": "~/.local/state/onedrive-davfs",
+        "description": "Directory containing onedrive-davfs's token.json. Only its non-secret expiry timestamp is ever read."
+      },
+      {
+        "key": "reconnectCommand",
+        "type": "string",
+        "label": "Reconnect command",
+        "defaultValue": "",
+        "description": "Shell command run in a floating terminal to (re)authenticate onedrive-davfs, e.g. \"ONEDRIVE_CLIENT_ID=... /path/to/onedrive-davfs/tools/device-code-login.sh\". Required for the Reconnect action when using the wasm_davfs backend."
       }
     ]
   }

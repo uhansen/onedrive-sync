@@ -25,6 +25,13 @@ Item {
   property string mountPointExpanded: expandHome(mountPoint)
   property string serviceUnit: stringSetting("serviceUnit", "rclone-onedrive.service")
   property string rcAddr: stringSetting("rcAddr", "127.0.0.1:5572")
+  property string backend: stringSetting("backend", "rclone_mount")
+  readonly property bool isDavfsBackend: backend === "wasm_davfs"
+  property string davfsUrl: stringSetting("davfsUrl", "http://127.0.0.1:8765/")
+  property string daemonServiceUnit: stringSetting("daemonServiceUnit", "onedrive-davfs.service")
+  property string mountServiceUnit: stringSetting("mountServiceUnit", "onedrive-davfs-mount.service")
+  property string stateDir: stringSetting("stateDir", "~/.local/state/onedrive-davfs")
+  property string reconnectCommand: stringSetting("reconnectCommand", "")
   property double lastSyncTs: 0
   property var pendingFiles: []
   property int pendingCount: 0
@@ -34,14 +41,21 @@ Item {
   property var errors: []
   property string actionStatus: ""
   property string lastError: ""
+  property bool mountServiceExists: false
+  property bool mountServiceRunning: false
+  property bool daemonReachable: false
+  property double tokenExpiresInSec: 0
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running
   readonly property bool canToggle: serviceExists && !controlProcess.running
-  readonly property bool canSyncNow: installed && running && rcAvailable && !syncProcess.running && !statusProcess.running
-  readonly property bool canReconnect: installed && !authProcess.running
+  readonly property bool canSyncNow: !isDavfsBackend && installed && running && rcAvailable && !syncProcess.running && !statusProcess.running
+  readonly property bool canReconnect: isDavfsBackend
+    ? (reconnectCommand !== "" && !authProcess.running)
+    : (installed && !authProcess.running)
   readonly property bool canOpenFolder: mountPointExpanded !== ""
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("status.py")).replace(/^file:\/\//, ""))
+  readonly property string helperPathDavfs: decodeURIComponent(String(Qt.resolvedUrl("status_davfs.py")).replace(/^file:\/\//, ""))
 
   property string _statusOutput: ""
   property string _statusError: ""
@@ -83,7 +97,11 @@ Item {
     _statusOutput = ""
     _statusError = ""
     refreshing = true
-    statusProcess.command = ["python3", helperPath, remoteName, mountPoint, serviceUnit, rcAddr, "25"]
+    if (isDavfsBackend) {
+      statusProcess.command = ["python3", helperPathDavfs, mountPoint, daemonServiceUnit, mountServiceUnit, stateDir, davfsUrl]
+    } else {
+      statusProcess.command = ["python3", helperPath, remoteName, mountPoint, serviceUnit, rcAddr, "25"]
+    }
     statusProcess.running = true
   }
 
@@ -99,6 +117,10 @@ Item {
     mounted = parsed.mounted === true
     authenticated = parsed.authenticated === true
     rcAvailable = parsed.rcAvailable === true
+    mountServiceExists = parsed.mountServiceExists === true
+    mountServiceRunning = parsed.mountServiceRunning === true
+    daemonReachable = parsed.daemonReachable === true
+    tokenExpiresInSec = Number(parsed.tokenExpiresInSec || 0)
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     statusText = String(parsed.statusText || (installed ? "Stopped" : "Not installed"))
     mountPointExpanded = String(parsed.mountPointExpanded || expandHome(mountPoint))
@@ -118,12 +140,21 @@ Item {
     return value.length > 140 ? value.substring(0, 137) + "…" : value
   }
 
+  function backendServiceUnits() {
+    if (!isDavfsBackend) return [serviceUnit]
+    var units = [daemonServiceUnit]
+    if (mountServiceUnit !== "") units.push(mountServiceUnit)
+    return units
+  }
+
   function pause() {
-    runControl(["systemctl", "--user", "stop", serviceUnit], 0)
+    var units = backendServiceUnits().slice().reverse()
+    runControl(["systemctl", "--user", "stop"].concat(units), 0)
   }
 
   function resume() {
-    runControl(["systemctl", "--user", "start", serviceUnit], 1)
+    var units = backendServiceUnits()
+    runControl(["systemctl", "--user", "start"].concat(units), 1)
   }
 
   function toggleRunning() {
@@ -141,6 +172,7 @@ Item {
   }
 
   function syncNow() {
+    if (isDavfsBackend) return
     if (!installed) return
     if (!running) {
       actionStatus = "Start the mount service first"
@@ -160,6 +192,10 @@ Item {
   }
 
   function reconnect() {
+    if (isDavfsBackend) {
+      reconnectDavfs()
+      return
+    }
     if (authProcess.running || !installed) return
     _authOutput = ""
     _authError = ""
@@ -167,6 +203,23 @@ Item {
     actionStatus = "Starting OneDrive authorization…"
     authProcess.command = ["bash", "-lc", "rclone config reconnect " + shellQuote(remoteName + ":") + " --auto-confirm || rclone authorize onedrive"]
     authProcess.running = true
+  }
+
+  function reconnectDavfs() {
+    if (reconnectCommand === "") {
+      actionStatus = "Set a Reconnect command in plugin settings first"
+      actionStatusTimer.restart()
+      return
+    }
+    // Runs the user-configured sign-in command (e.g. tools/device-code-login.sh)
+    // in a floating terminal via Omarchy's own presentation helper -- the
+    // same mechanism Omarchy's install-app flows use. The plugin never
+    // touches OAuth tokens or client secrets itself; it only launches the
+    // command the user configured once in settings.
+    actionStatus = "Opening OneDrive sign-in terminal…"
+    actionStatusTimer.restart()
+    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", reconnectCommand])
+    delayedRefresh.restart()
   }
 
   function shellQuote(text) {

@@ -33,7 +33,10 @@ function defaultStatus() {
     bytesQueued: 0,
     transferredBytes: 0,
     errorCount: 0,
-    errors: []
+    errors: [],
+    backend: "",
+    daemonReachable: false,
+    tokenExpiresInSec: 0
   }
 }
 
@@ -48,6 +51,18 @@ function formatBytes(bytes) {
   }
   var decimals = value >= 100 || index === 0 ? 0 : (value >= 10 ? 1 : 2)
   return value.toFixed(decimals).replace(/\.0+$/, "").replace(/(\.\d)0$/, "$1") + " " + units[index]
+}
+
+function formatDuration(seconds) {
+  var value = Math.max(0, Math.floor(Number(seconds || 0)))
+  if (!isFinite(value) || value <= 0) return "expired"
+  if (value < 60) return value + "s"
+  var minutes = Math.floor(value / 60)
+  if (minutes < 60) return minutes + "m"
+  var hours = Math.floor(minutes / 60)
+  if (hours < 24) return hours + "h"
+  var days = Math.floor(hours / 24)
+  return days + "d"
 }
 
 function relativeTime(timestampSec, nowMs) {
@@ -104,6 +119,7 @@ if (typeof module !== "undefined") {
     parseStatus: parseStatus,
     defaultStatus: defaultStatus,
     formatBytes: formatBytes,
+    formatDuration: formatDuration,
     relativeTime: relativeTime,
     pendingGlyph: pendingGlyph,
     pendingTitle: pendingTitle,

@@ -37,17 +37,33 @@ Panel {
   readonly property string toggleHint: onedrive.active ? "Pause the mount service" : "Resume the mount service"
   readonly property color barIconColor: onedrive.authenticated && onedrive.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && onedrive.serviceExists
-  readonly property string loginTitle: !onedrive.installed
-    ? "rclone is not installed"
-    : (onedrive.authenticated ? "Reconnect OneDrive" : "Authorize OneDrive")
-  readonly property string loginSubtitle: !onedrive.installed
-    ? "Install rclone and configure a OneDrive remote first"
-    : (!onedrive.serviceExists
-      ? "Create " + onedrive.serviceUnit + " after authorizing the remote"
-      : "Open rclone's OAuth flow in the browser")
+  readonly property string loginTitle: onedrive.isDavfsBackend
+    ? (onedrive.authenticated ? "Reconnect OneDrive" : "Sign in to OneDrive")
+    : (!onedrive.installed
+      ? "rclone is not installed"
+      : (onedrive.authenticated ? "Reconnect OneDrive" : "Authorize OneDrive"))
+  readonly property string loginSubtitle: onedrive.isDavfsBackend
+    ? (onedrive.reconnectCommand === ""
+      ? "Set a Reconnect command in plugin settings first"
+      : (!onedrive.serviceExists
+        ? "Create " + onedrive.daemonServiceUnit + " after signing in"
+        : "Run the configured sign-in command in a floating terminal"))
+    : (!onedrive.installed
+      ? "Install rclone and configure a OneDrive remote first"
+      : (!onedrive.serviceExists
+        ? "Create " + onedrive.serviceUnit + " after authorizing the remote"
+        : "Open rclone's OAuth flow in the browser"))
 
   function heroMetaText() {
     if (onedrive.lastError !== "") return onedrive.lastError
+    if (onedrive.isDavfsBackend) {
+      if (!onedrive.serviceExists) return "Create " + onedrive.daemonServiceUnit + " to manage the daemon"
+      if (!onedrive.authenticated) return "Sign in to OneDrive"
+      if (onedrive.active && !onedrive.mounted) return "Daemon active, waiting for mount"
+      if (onedrive.active && !onedrive.daemonReachable) return "Daemon active, not responding"
+      if (onedrive.active) return Model.statusSummary(onedrive.statusText, onedrive.pendingCount, onedrive.lastSyncTs)
+      return "Daemon paused"
+    }
     if (!onedrive.installed) return "Install rclone to enable OneDrive control"
     if (!onedrive.serviceExists) return "Create " + onedrive.serviceUnit + " to manage the mount"
     if (!onedrive.authenticated) return "Authorize remote " + onedrive.remoteName
@@ -61,6 +77,8 @@ Panel {
     return flag ? yesText : noText
   }
 
+  readonly property int minActionIndex: onedrive.isDavfsBackend ? 1 : 0
+
   function ensureCursor() {
     if (!onedrive.authenticated) {
       focusSection = "login"
@@ -69,7 +87,7 @@ Panel {
     if (focusSection !== "header" && focusSection !== "actions" && focusSection !== "files") focusSection = "header"
     if (fileIndex >= onedrive.pendingFiles.length) fileIndex = Math.max(0, onedrive.pendingFiles.length - 1)
     if (fileIndex < 0) fileIndex = 0
-    if (actionIndex < 0) actionIndex = 0
+    if (actionIndex < minActionIndex) actionIndex = minActionIndex
     if (actionIndex > 2) actionIndex = 2
     if (focusSection === "files" && onedrive.pendingFiles.length === 0) focusSection = "actions"
   }
@@ -93,7 +111,7 @@ Panel {
         scrollCursorIntoView()
         return
       }
-      if (dx < 0) actionIndex = Math.max(0, actionIndex - 1)
+      if (dx < 0) actionIndex = Math.max(minActionIndex, actionIndex - 1)
       if (dx > 0) actionIndex = Math.min(2, actionIndex + 1)
       return
     }
@@ -118,7 +136,7 @@ Panel {
   }
 
   function triggerAction(index) {
-    if (index === 0) onedrive.syncNow()
+    if (index === 0 && !onedrive.isDavfsBackend) onedrive.syncNow()
     else if (index === 1) onedrive.openFolder()
     else if (index === 2) onedrive.reconnect()
   }
@@ -336,17 +354,20 @@ Panel {
             spacing: Style.spacing.labelGap
 
             InfoPair { label: "Status"; value: onedrive.statusText }
-            InfoPair { label: "Remote"; value: onedrive.remoteName }
-            InfoPair { label: "Unit"; value: onedrive.serviceUnit }
+            InfoPair { label: "Backend"; value: onedrive.isDavfsBackend ? "WebDAV (davfs2)" : "rclone mount" }
+            InfoPair { label: "Remote"; value: onedrive.remoteName; visible: !onedrive.isDavfsBackend }
+            InfoPair { label: "Unit"; value: onedrive.isDavfsBackend ? onedrive.daemonServiceUnit : onedrive.serviceUnit }
             InfoPair { label: "Service"; value: root.stateText(onedrive.running, "Running", (onedrive.serviceExists ? "Stopped" : "Missing")) }
             InfoPair { label: "Mounted"; value: root.stateText(onedrive.mounted, "Yes", "No") }
             InfoPair { label: "Auth"; value: root.stateText(onedrive.authenticated, "Ready", "Required") }
-            InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable") }
+            InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable"); visible: !onedrive.isDavfsBackend }
+            InfoPair { label: "Daemon"; value: root.stateText(onedrive.daemonReachable, "Reachable", "Unavailable"); visible: onedrive.isDavfsBackend }
+            InfoPair { label: "Token"; value: onedrive.authenticated ? ("expires in " + Model.formatDuration(onedrive.tokenExpiresInSec)) : "missing"; visible: onedrive.isDavfsBackend }
             InfoPair { label: "Mount"; value: onedrive.mountPointExpanded }
-            InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs) }
-            InfoPair { label: "Pending"; value: String(onedrive.pendingCount) }
-            InfoPair { label: "Queued"; value: Model.formatBytes(onedrive.bytesQueued) }
-            InfoPair { label: "Transferred"; value: Model.formatBytes(onedrive.transferredBytes) }
+            InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs); visible: !onedrive.isDavfsBackend }
+            InfoPair { label: "Pending"; value: String(onedrive.pendingCount); visible: !onedrive.isDavfsBackend }
+            InfoPair { label: "Queued"; value: Model.formatBytes(onedrive.bytesQueued); visible: !onedrive.isDavfsBackend }
+            InfoPair { label: "Transferred"; value: Model.formatBytes(onedrive.transferredBytes); visible: !onedrive.isDavfsBackend }
           }
 
           PanelSeparator {
@@ -371,6 +392,8 @@ Panel {
 
               ActionRow {
                 width: parent.width
+                visible: !onedrive.isDavfsBackend
+                height: visible ? implicitHeight : 0
                 rowIndex: 0
                 iconText: "󰑐"
                 title: "Sync now"
@@ -397,22 +420,26 @@ Panel {
                 width: parent.width
                 rowIndex: 2
                 iconText: "󰌋"
-                title: onedrive.authenticated ? "Reconnect" : "Authorize"
-                subtitle: onedrive.authenticated
-                  ? "Start rclone's OAuth re-authorization flow"
-                  : "Finish remote authorization without exposing tokens to QML"
+                title: onedrive.authenticated ? "Reconnect" : (onedrive.isDavfsBackend ? "Sign in" : "Authorize")
+                subtitle: onedrive.isDavfsBackend
+                  ? (onedrive.reconnectCommand === ""
+                    ? "Set a Reconnect command in plugin settings"
+                    : "Run the sign-in command in a floating terminal")
+                  : (onedrive.authenticated
+                    ? "Start rclone's OAuth re-authorization flow"
+                    : "Finish remote authorization without exposing tokens to QML")
                 enabled: onedrive.canReconnect
               }
             }
           }
 
           PanelSeparator {
-            visible: onedrive.authenticated
+            visible: onedrive.authenticated && !onedrive.isDavfsBackend
             foreground: root.foreground
           }
 
           Column {
-            visible: onedrive.authenticated
+            visible: onedrive.authenticated && !onedrive.isDavfsBackend
             width: parent.width
             spacing: Style.space(10)
 

@@ -58,10 +58,18 @@ Item {
   property var treeExpanded: ({})
   property string treeError: ""
   property string selectedTreePath: "/"
+  property string searchQuery: ""
+  property var searchResults: []
+  property bool searchReady: true
+  property bool searchTruncated: false
+  property string searchError: ""
+  property string copyDestination: stringSetting("copyDestination", "~/Downloads/OneDrive")
+  property var pendingCopyEntry: null
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool treeLoading: treeProcess.running
-  readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running || indexStatsProcess.running || treeProcess.running
+  readonly property bool searchLoading: searchProcess.running
+  readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running || indexStatsProcess.running || treeProcess.running || pickFolderProcess.running
   readonly property bool canToggle: serviceExists && !controlProcess.running
   readonly property bool canSyncNow: !isDavfsBackend && installed && running && rcAvailable && !syncProcess.running && !statusProcess.running
   readonly property bool canReconnect: isDavfsBackend
@@ -71,6 +79,7 @@ Item {
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("status.py")).replace(/^file:\/\//, ""))
   readonly property string helperPathDavfs: decodeURIComponent(String(Qt.resolvedUrl("status_davfs.py")).replace(/^file:\/\//, ""))
   readonly property string helperPathTree: decodeURIComponent(String(Qt.resolvedUrl("tree_davfs.py")).replace(/^file:\/\//, ""))
+  readonly property string helperPathPickFolder: decodeURIComponent(String(Qt.resolvedUrl("pick_folder.py")).replace(/^file:\/\//, ""))
 
   property string _statusOutput: ""
   property string _statusError: ""
@@ -303,6 +312,66 @@ Item {
     if (!selectedTreePath || selectedTreePath === "") selectedTreePath = parsed.path
   }
 
+  function updateSearchQuery(text) {
+    searchQuery = String(text || "")
+    if (searchQuery.length < 2) {
+      searchDebounce.stop()
+      searchResults = []
+      searchReady = true
+      searchTruncated = false
+      searchError = ""
+      return
+    }
+    searchDebounce.restart()
+  }
+
+  function runSearch() {
+    if (!isDavfsBackend) return
+    if (searchQuery.length < 2) return
+    if (searchProcess.running) {
+      searchDebounce.restart()
+      return
+    }
+    searchProcess.command = ["python3", helperPathTree, "search", envFile, davfsUrl, searchQuery]
+    searchProcess.running = true
+  }
+
+  function applySearchResults(raw) {
+    var parsed = Model.parseSearchResults(raw)
+    if (!parsed.ok) {
+      searchError = parsed.error || "Search failed"
+      searchResults = []
+      return
+    }
+    searchError = ""
+    searchReady = parsed.ready !== false
+    searchTruncated = parsed.truncated === true
+    searchResults = parsed.results || []
+  }
+
+  function copyEntry(path, isDir, name) {
+    if (pickFolderProcess.running) return
+    pendingCopyEntry = { path: path, isDir: isDir, name: name }
+    pickFolderProcess.command = ["/usr/bin/python3", helperPathPickFolder, copyDestination]
+    pickFolderProcess.running = true
+  }
+
+  function mailEntry(path) {
+    var abs = localPathFor(path)
+    if (!abs) return
+    Quickshell.execDetached(["xdg-email", "--attach", abs])
+    actionStatus = "Opened mail compose"
+    actionStatusTimer.restart()
+  }
+
+  function openEntry(path) {
+    var abs = localPathFor(path)
+    if (!abs) return
+    Quickshell.execDetached(["xdg-open", abs])
+    actionStatus = "Opened"
+    actionStatusTimer.restart()
+  }
+
   function localPathFor(relPath) {
     var base = String(mountPointExpanded || "").replace(/\/+$/, "")
     var rel = String(relPath || "/")
@@ -410,6 +479,13 @@ Item {
     }
   }
 
+  Timer {
+    id: searchDebounce
+    interval: 250
+    repeat: false
+    onTriggered: root.runSearch()
+  }
+
   Process {
     id: statusProcess
     running: false
@@ -494,6 +570,43 @@ Item {
       var stderr = String(treeStderr.text || "")
       if (exitCode === 0) root.applyTree(stdout)
       else root.treeError = root.elideStatus(stderr || stdout || "Could not list folder")
+    }
+  }
+
+  Process {
+    id: searchProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: searchStdout; waitForEnd: true }
+    stderr: StdioCollector { id: searchStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      var stdout = String(searchStdout.text || "")
+      var stderr = String(searchStderr.text || "")
+      if (exitCode === 0) root.applySearchResults(stdout)
+      else {
+        root.searchError = root.elideStatus(stderr || stdout || "Search failed")
+        root.searchResults = []
+      }
+    }
+  }
+
+  Process {
+    id: pickFolderProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: pickFolderStdout; waitForEnd: true }
+    stderr: StdioCollector { id: pickFolderStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      var dest = String(pickFolderStdout.text || "").trim()
+      var entry = root.pendingCopyEntry
+      root.pendingCopyEntry = null
+      if (exitCode !== 0 || dest === "" || !entry) return
+      var src = root.localPathFor(entry.path)
+      if (!src) return
+      var cmd = "mkdir -p -- " + root.shellQuote(dest) + " && cp -R -n -- " + root.shellQuote(src) + " " + root.shellQuote(dest) + "/"
+      Quickshell.execDetached(["sh", "-c", cmd])
+      root.actionStatus = "Copied to " + dest
+      actionStatusTimer.restart()
     }
   }
 

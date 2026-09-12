@@ -202,6 +202,31 @@ function flattenTree(byPath, expanded, rootPath) {
   return rows
 }
 
+function parseSearchResults(raw) {
+  var parsed = parseStatus(raw)
+  if (!parsed.ok) {
+    parsed.ready = false
+    parsed.query = ""
+    parsed.truncated = false
+    parsed.results = []
+    return parsed
+  }
+  parsed.ready = parsed.ready === true
+  parsed.query = String(parsed.query || "")
+  parsed.truncated = parsed.truncated === true
+  var results = Array.isArray(parsed.results) ? parsed.results : []
+  parsed.results = results.map(function (entry) {
+    return {
+      path: String((entry && entry.path) || ""),
+      name: String((entry && entry.name) || ""),
+      isDir: isFolderEntry(entry),
+      size: Number((entry && entry.size) || 0),
+      mtime: Number((entry && entry.mtime) || 0)
+    }
+  })
+  return parsed
+}
+
 function statusSummary(statusText, pendingCount, lastSyncTs) {
   if (Number(pendingCount || 0) > 0) return "Syncing " + pendingCount + " item" + (pendingCount === 1 ? "" : "s")
   if (Number(lastSyncTs || 0) > 0) return "Last sync " + relativeTime(lastSyncTs)
@@ -222,6 +247,7 @@ if (typeof module !== "undefined") {
     formatRate: formatRate,
     parseIndexStatus: parseIndexStatus,
     parseTree: parseTree,
+    parseSearchResults: parseSearchResults,
     flattenTree: flattenTree,
     joinTreePath: joinTreePath,
     isFolderEntry: isFolderEntry

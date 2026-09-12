@@ -86,7 +86,7 @@ def main():
     davfs_url = sys.argv[3] if len(sys.argv) > 3 else "http://127.0.0.1:8765/"
     path = sys.argv[4] if len(sys.argv) > 4 else "/"
 
-    if action not in ("status", "tree"):
+    if action not in ("status", "tree", "search"):
         return fail("unknown action")
 
     secret, err = load_basic_secret(env_file)
@@ -95,6 +95,12 @@ def main():
 
     if action == "status":
         payload = request_json(join_url(davfs_url, "/_status"), secret, timeout=4)
+    elif action == "search":
+        payload = request_json(
+            join_url(davfs_url, "/_search", {"q": path}),
+            secret,
+            timeout=8,
+        )
     else:
         payload = request_json(
             join_url(davfs_url, "/_tree", {"path": path or "/"}),

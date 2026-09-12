@@ -178,6 +178,11 @@ Panel {
     if (row) onedrive.selectedTreePath = row.path
   }
 
+  function closeTreePanel() {
+    treePanelOpen = false
+    if (onedrive.searchQuery !== "") onedrive.updateSearchQuery("")
+  }
+
   function moveTreeCursor(dy) {
     if (treeRows.length === 0 || dy === 0) return
     treeIndex = Math.max(0, Math.min(treeRows.length - 1, treeIndex + dy))
@@ -299,7 +304,7 @@ Panel {
     onedrive.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   } else {
-    treePanelOpen = false
+    closeTreePanel()
   }
   onFileIndexChanged: scrollCursorIntoView()
 
@@ -363,6 +368,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: searchField.activeFocus
       onMoveRequested: function(dx, dy) {
         if (root.treePanelOpen) { root.moveTreeCursor(dy); return }
         if (!root.cursorActive) { root.cursorActive = true; return }
@@ -373,13 +379,14 @@ Panel {
         if (root.cursorActive) root.activateCursor()
       }
       onCloseRequested: {
-        if (root.treePanelOpen) { root.treePanelOpen = false; return }
+        if (root.treePanelOpen) { root.closeTreePanel(); return }
         root.close()
       }
       onTabRequested: function(direction) { if (!root.treePanelOpen) root.switchPanel(direction) }
       onTextKey: function(t) {
         if (root.treePanelOpen) {
           if (t === "t" || t === "T") root.openTreeTerminal(root.selectedTreeRow())
+          else if (t === "/") Qt.callLater(function() { searchField.forceActiveFocus() })
           return
         }
         if (t === "r" || t === "R") onedrive.refresh()
@@ -674,7 +681,7 @@ Panel {
               tooltipText: "Close"
               foreground: root.foreground
               fontFamily: root.fontFamily
-              onClicked: root.treePanelOpen = false
+              onClicked: root.closeTreePanel()
             }
           }
 
@@ -683,8 +690,69 @@ Panel {
             foreground: root.foreground
           }
 
+          TextField {
+            id: searchField
+            Layout.fillWidth: true
+            placeholderText: "Browse folders"
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            foreground: root.foreground
+            text: onedrive.searchQuery
+            onTextChanged: if (text !== onedrive.searchQuery) onedrive.updateSearchQuery(text)
+            Keys.onEscapePressed: {
+              if (text !== "") {
+                text = ""
+              } else {
+                root.closeTreePanel()
+                keyCatcher.forceActiveFocus()
+              }
+            }
+          }
+
           Text {
-            visible: onedrive.treeError !== ""
+            visible: onedrive.searchQuery.length >= 2 && onedrive.searchError !== ""
+            Layout.fillWidth: true
+            text: onedrive.searchError
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: onedrive.searchQuery.length >= 2 && onedrive.searchError === "" && !onedrive.searchReady
+            Layout.fillWidth: true
+            text: "Index not ready yet"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            horizontalAlignment: Text.AlignHCenter
+          }
+
+          Text {
+            visible: onedrive.searchQuery.length >= 2 && onedrive.searchError === "" && onedrive.searchReady
+              && !onedrive.searchLoading && onedrive.searchResults.length === 0
+            Layout.fillWidth: true
+            text: "No matches"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            horizontalAlignment: Text.AlignHCenter
+          }
+
+          Text {
+            visible: onedrive.searchQuery.length >= 2 && onedrive.searchTruncated
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: "Showing first " + onedrive.searchResults.length + " matches — refine your search for more"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
+          }
+
+          Text {
+            visible: onedrive.searchQuery.length < 2
             Layout.fillWidth: true
             text: onedrive.treeError
             color: root.urgent
@@ -694,7 +762,7 @@ Panel {
           }
 
           Text {
-            visible: treeRows.length === 0 && onedrive.treeError === ""
+            visible: onedrive.searchQuery.length < 2 && treeRows.length === 0 && onedrive.treeError === ""
             Layout.fillWidth: true
             text: onedrive.treeLoading ? "Loading folder list…" : "No folders in the index yet."
             color: root.dim
@@ -705,6 +773,7 @@ Panel {
 
           Flickable {
             id: treeOverlayFlick
+            visible: onedrive.searchQuery.length < 2
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: width
@@ -734,10 +803,41 @@ Panel {
             }
           }
 
+          Flickable {
+            id: searchResultsFlick
+            visible: onedrive.searchQuery.length >= 2
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: width
+            contentHeight: searchResultsColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            interactive: contentHeight > height
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            Column {
+              id: searchResultsColumn
+              width: searchResultsFlick.width
+              spacing: Style.space(2)
+
+              Repeater {
+                model: onedrive.searchResults
+                SearchResultRow {
+                  required property var modelData
+                  width: searchResultsColumn.width
+                  entry: modelData
+                }
+              }
+            }
+          }
+
           Text {
             Layout.fillWidth: true
             textFormat: Text.PlainText
-            text: "Shortcuts: ↑↓ navigate · Enter expand/collapse · T terminal · Esc close"
+            text: onedrive.searchQuery.length >= 2
+              ? "Shortcuts: Esc clear search"
+              : "Shortcuts: ↑↓ navigate · Enter expand/collapse · T terminal · / search · Esc close"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -1037,6 +1137,87 @@ Panel {
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter
         onClicked: root.openTreeTerminal(treeRow.row)
+      }
+    }
+  }
+
+  component SearchResultRow: Rectangle {
+    id: resultRow
+    property var entry: null
+    readonly property bool isDir: !!(entry && entry.isDir)
+
+    color: "transparent"
+    implicitHeight: resultContent.implicitHeight + Style.spacing.rowPaddingX
+
+    RowLayout {
+      id: resultContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(8)
+      spacing: Style.space(6)
+
+      Text {
+        textFormat: Text.PlainText
+        text: resultRow.isDir ? "󰉋" : "󰈔"
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.icon
+        Layout.alignment: Qt.AlignVCenter
+      }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(1)
+
+        Text {
+          textFormat: Text.PlainText
+          Layout.fillWidth: true
+          text: resultRow.entry ? String(resultRow.entry.name || "") : ""
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          elide: Text.ElideRight
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          Layout.fillWidth: true
+          text: resultRow.entry ? String(resultRow.entry.path || "") : ""
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideMiddle
+        }
+      }
+
+      PanelActionButton {
+        iconText: "󰏋"
+        tooltipText: "Open"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: onedrive.openEntry(resultRow.entry.path)
+      }
+
+      PanelActionButton {
+        iconText: "󰆏"
+        tooltipText: "Copy to…"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: onedrive.copyEntry(resultRow.entry.path, resultRow.isDir, resultRow.entry.name)
+      }
+
+      PanelActionButton {
+        iconText: "󰇮"
+        tooltipText: "Mail"
+        visible: !resultRow.isDir
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: onedrive.mailEntry(resultRow.entry.path)
       }
     }
   }

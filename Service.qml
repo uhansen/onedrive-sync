@@ -32,6 +32,7 @@ Item {
   property string mountServiceUnit: stringSetting("mountServiceUnit", "onedrive-davfs-mount.service")
   property string stateDir: stringSetting("stateDir", "~/.local/state/onedrive-davfs")
   property string reconnectCommand: stringSetting("reconnectCommand", "")
+  property string envFile: stringSetting("envFile", "~/.config/onedrive-davfs/env")
   property double lastSyncTs: 0
   property var pendingFiles: []
   property int pendingCount: 0
@@ -45,9 +46,22 @@ Item {
   property bool mountServiceRunning: false
   property bool daemonReachable: false
   property double tokenExpiresInSec: 0
+  property bool indexEnabled: false
+  property bool crawlComplete: false
+  property double totalDirs: 0
+  property double totalFiles: 0
+  property double itemsPerSec: 0
+  property double lastTickAt: 0
+  property double lastTickApplied: 0
+  property double lastTickDurationMs: 0
+  property var treeByPath: ({})
+  property var treeExpanded: ({})
+  property string treeError: ""
+  property string selectedTreePath: "/"
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
-  readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running
+  readonly property bool treeLoading: treeProcess.running
+  readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running || indexStatsProcess.running || treeProcess.running
   readonly property bool canToggle: serviceExists && !controlProcess.running
   readonly property bool canSyncNow: !isDavfsBackend && installed && running && rcAvailable && !syncProcess.running && !statusProcess.running
   readonly property bool canReconnect: isDavfsBackend
@@ -56,6 +70,7 @@ Item {
   readonly property bool canOpenFolder: mountPointExpanded !== ""
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("status.py")).replace(/^file:\/\//, ""))
   readonly property string helperPathDavfs: decodeURIComponent(String(Qt.resolvedUrl("status_davfs.py")).replace(/^file:\/\//, ""))
+  readonly property string helperPathTree: decodeURIComponent(String(Qt.resolvedUrl("tree_davfs.py")).replace(/^file:\/\//, ""))
 
   property string _statusOutput: ""
   property string _statusError: ""
@@ -99,6 +114,7 @@ Item {
     refreshing = true
     if (isDavfsBackend) {
       statusProcess.command = ["python3", helperPathDavfs, mountPoint, daemonServiceUnit, mountServiceUnit, stateDir, davfsUrl]
+      fetchIndexStats()
     } else {
       statusProcess.command = ["python3", helperPath, remoteName, mountPoint, serviceUnit, rcAddr, "25"]
     }
@@ -125,6 +141,7 @@ Item {
     statusText = String(parsed.statusText || (installed ? "Stopped" : "Not installed"))
     mountPointExpanded = String(parsed.mountPointExpanded || expandHome(mountPoint))
     lastSyncTs = Number(parsed.lastSyncTs || 0)
+    if (isDavfsBackend && lastTickAt > 0) lastSyncTs = lastTickAt
     pendingFiles = parsed.pendingFiles || []
     pendingCount = Number(parsed.pendingCount || pendingFiles.length || 0)
     bytesQueued = Number(parsed.bytesQueued || 0)
@@ -224,6 +241,81 @@ Item {
 
   function shellQuote(text) {
     return "'" + String(text || "").replace(/'/g, "'\\''") + "'"
+  }
+
+  function fetchIndexStats() {
+    if (!isDavfsBackend || indexStatsProcess.running) return
+    indexStatsProcess.command = ["python3", helperPathTree, "status", envFile, davfsUrl]
+    indexStatsProcess.running = true
+  }
+
+  function fetchTree(path) {
+    if (!isDavfsBackend || treeProcess.running) return
+    var target = String(path || "/")
+    if (target.indexOf("..") !== -1) return
+    treeError = ""
+    treeProcess.command = ["python3", helperPathTree, "tree", envFile, davfsUrl, target]
+    treeProcess.running = true
+  }
+
+  function ensureTreeRoot() {
+    if (!isDavfsBackend) return
+    if (!treeByPath["/"]) fetchTree("/")
+  }
+
+  function toggleTreeExpand(path) {
+    var next = Object.assign({}, treeExpanded)
+    if (next[path]) {
+      delete next[path]
+    } else {
+      next[path] = true
+      if (!treeByPath[path]) fetchTree(path)
+    }
+    treeExpanded = next
+  }
+
+  function applyIndexStats(raw) {
+    var parsed = Model.parseIndexStatus(raw)
+    if (!parsed.ok) {
+      treeError = parsed.error || parsed.lastError || ""
+      return
+    }
+    indexEnabled = parsed.indexEnabled === true
+    crawlComplete = parsed.crawlComplete === true
+    totalDirs = Number(parsed.totalDirs || 0)
+    totalFiles = Number(parsed.totalFiles || 0)
+    itemsPerSec = Number(parsed.itemsPerSec || 0)
+    lastTickAt = Number(parsed.lastTickAt || 0)
+    lastTickApplied = Number(parsed.lastTickApplied || 0)
+    lastTickDurationMs = Number(parsed.lastTickDurationMs || 0)
+    if (lastTickAt > 0) lastSyncTs = lastTickAt
+  }
+
+  function applyTree(raw) {
+    var parsed = Model.parseTree(raw)
+    if (!parsed.ok) {
+      treeError = parsed.error || parsed.lastError || "Failed to list folder"
+      return
+    }
+    var next = Object.assign({}, treeByPath)
+    next[parsed.path] = parsed
+    treeByPath = next
+    if (!selectedTreePath || selectedTreePath === "") selectedTreePath = parsed.path
+  }
+
+  function localPathFor(relPath) {
+    var base = String(mountPointExpanded || "").replace(/\/+$/, "")
+    var rel = String(relPath || "/")
+    if (rel.indexOf("..") !== -1) return base
+    if (rel === "/" || rel === "") return base
+    if (rel.charAt(0) !== "/") rel = "/" + rel
+    return base + rel
+  }
+
+  function openTerminalAt(relPath) {
+    var abs = localPathFor(relPath)
+    if (!abs) return
+    Quickshell.execDetached(["uwsm-app", "--", "xdg-terminal-exec", "--dir=" + abs])
   }
 
   function openFolder() {
@@ -374,6 +466,34 @@ Item {
         actionStatusTimer.restart()
       }
       delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: indexStatsProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: indexStatsStdout; waitForEnd: true }
+    stderr: StdioCollector { id: indexStatsStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      var stdout = String(indexStatsStdout.text || "")
+      var stderr = String(indexStatsStderr.text || "")
+      if (exitCode === 0) root.applyIndexStats(stdout)
+      else root.treeError = root.elideStatus(stderr || stdout || "Could not read index status")
+    }
+  }
+
+  Process {
+    id: treeProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: treeStdout; waitForEnd: true }
+    stderr: StdioCollector { id: treeStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      var stdout = String(treeStdout.text || "")
+      var stderr = String(treeStderr.text || "")
+      if (exitCode === 0) root.applyTree(stdout)
+      else root.treeError = root.elideStatus(stderr || stdout || "Could not list folder")
     }
   }
 

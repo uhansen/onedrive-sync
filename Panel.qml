@@ -16,8 +16,10 @@ Panel {
   property string focusSection: "login"
   property int actionIndex: 0
   property int fileIndex: 0
+  property int treeIndex: 0
   property bool cursorActive: false
   property int phraseIndex: 0
+  property bool treePanelOpen: false
 
   readonly property var activePhrases: [
     "Mounting memories",
@@ -83,7 +85,30 @@ Panel {
     return flag ? yesText : noText
   }
 
+  readonly property var treeRows: Model.flattenTree(onedrive.treeByPath, onedrive.treeExpanded, "/")
   readonly property int minActionIndex: onedrive.isDavfsBackend ? 1 : 0
+  readonly property int maxActionIndex: onedrive.isDavfsBackend ? 3 : 2
+  readonly property bool indexingActive: onedrive.isDavfsBackend && onedrive.indexEnabled && !onedrive.crawlComplete
+
+  function indexProgressText() {
+    var dirs = Number(onedrive.totalDirs || 0)
+    var files = Number(onedrive.totalFiles || 0)
+    var total = dirs + files
+    if (!onedrive.indexEnabled) return "Off"
+    if (total <= 0) return onedrive.crawlComplete ? "Empty" : "Crawling…"
+    var label = total + " items · " + dirs + " folders"
+    return onedrive.crawlComplete ? label : ("Crawling · " + label)
+  }
+
+  function tickMetaText() {
+    if (Number(onedrive.lastTickAt || 0) <= 0) return "Waiting for first tick"
+    var parts = []
+    parts.push(Model.relativeTime(onedrive.lastTickAt))
+    if (Number(onedrive.lastTickApplied || 0) > 0)
+      parts.push(onedrive.lastTickApplied + " items · " + Math.round(onedrive.lastTickDurationMs) + " ms")
+    parts.push(Model.formatRate(onedrive.itemsPerSec))
+    return parts.join(" · ")
+  }
 
   function ensureCursor() {
     if (!onedrive.authenticated) {
@@ -93,9 +118,13 @@ Panel {
     if (focusSection !== "header" && focusSection !== "actions" && focusSection !== "files") focusSection = "header"
     if (fileIndex >= onedrive.pendingFiles.length) fileIndex = Math.max(0, onedrive.pendingFiles.length - 1)
     if (fileIndex < 0) fileIndex = 0
+    if (treeIndex >= treeRows.length) treeIndex = Math.max(0, treeRows.length - 1)
+    if (treeIndex < 0) treeIndex = 0
     if (actionIndex < minActionIndex) actionIndex = minActionIndex
-    if (actionIndex > 2) actionIndex = 2
-    if (focusSection === "files" && onedrive.pendingFiles.length === 0) focusSection = "actions"
+    if (actionIndex > maxActionIndex) actionIndex = maxActionIndex
+    if (focusSection === "files" && onedrive.pendingFiles.length === 0) {
+      focusSection = "actions"
+    }
   }
 
   function moveCursor(dx, dy) {
@@ -118,7 +147,7 @@ Panel {
         return
       }
       if (dx < 0) actionIndex = Math.max(minActionIndex, actionIndex - 1)
-      if (dx > 0) actionIndex = Math.min(2, actionIndex + 1)
+      if (dx > 0) actionIndex = Math.min(maxActionIndex, actionIndex + 1)
       return
     }
     if (focusSection === "files") {
@@ -141,10 +170,61 @@ Panel {
     else if (focusSection === "files") onedrive.openFile(selectedFile())
   }
 
+  function openTreePanel() {
+    treePanelOpen = true
+    onedrive.ensureTreeRoot()
+    treeIndex = 0
+    var row = selectedTreeRow()
+    if (row) onedrive.selectedTreePath = row.path
+  }
+
+  function moveTreeCursor(dy) {
+    if (treeRows.length === 0 || dy === 0) return
+    treeIndex = Math.max(0, Math.min(treeRows.length - 1, treeIndex + dy))
+    var row = selectedTreeRow()
+    if (row) onedrive.selectedTreePath = row.path
+    scrollTreeCursorIntoView()
+  }
+
+  function selectedTreeRow() {
+    if (treeRows.length === 0) return null
+    return treeRows[Math.max(0, Math.min(treeIndex, treeRows.length - 1))]
+  }
+
+  function treeParentPath(path) {
+    var p = String(path || "/")
+    var i = p.lastIndexOf("/")
+    if (i <= 0) return "/"
+    return p.substring(0, i)
+  }
+
+  function activateTreeRow(row) {
+    if (!row) return
+    onedrive.selectedTreePath = row.path
+    if (row.isDir) onedrive.toggleTreeExpand(row.path)
+    else onedrive.openTerminalAt(treeParentPath(row.path))
+  }
+
+  function openTreeTerminal(row) {
+    if (!row) {
+      onedrive.openTerminalAt(onedrive.selectedTreePath || "/")
+      return
+    }
+    onedrive.selectedTreePath = row.path
+    onedrive.openTerminalAt(row.isDir ? row.path : treeParentPath(row.path))
+  }
+
+  function setTreeCursor(index) {
+    treeIndex = index
+    var row = selectedTreeRow()
+    if (row) onedrive.selectedTreePath = row.path
+  }
+
   function triggerAction(index) {
     if (index === 0 && !onedrive.isDavfsBackend) onedrive.syncNow()
     else if (index === 1) onedrive.openFolder()
     else if (index === 2) onedrive.reconnect()
+    else if (index === 3) root.openTreePanel()
   }
 
   function selectedFile() {
@@ -192,6 +272,24 @@ Panel {
       scrollItemIntoView(fileColumn.children[fileIndex])
   }
 
+  function scrollTreeCursorIntoView() {
+    if (!treeColumn || treeIndex < 0 || treeIndex >= treeColumn.children.length) return
+    var item = treeColumn.children[treeIndex]
+    if (!treeOverlayFlick || !item) return
+    Qt.callLater(function() {
+      if (!item) return
+      var margin = Style.space(6)
+      var point = item.mapToItem(treeOverlayFlick.contentItem, 0, 0)
+      var top = point.y
+      var bottom = top + item.height
+      var viewTop = treeOverlayFlick.contentY
+      var viewBottom = viewTop + treeOverlayFlick.height
+      var maxY = Math.max(0, treeOverlayFlick.contentHeight - treeOverlayFlick.height)
+      if (top < viewTop + margin) treeOverlayFlick.contentY = Math.max(0, top - margin)
+      else if (bottom > viewBottom - margin) treeOverlayFlick.contentY = Math.min(maxY, bottom + margin - treeOverlayFlick.height)
+    })
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -200,6 +298,8 @@ Panel {
     if (panelFlick) panelFlick.contentY = 0
     onedrive.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  } else {
+    treePanelOpen = false
   }
   onFileIndexChanged: scrollCursorIntoView()
 
@@ -238,6 +338,7 @@ Panel {
           color: root.barIconColor
           active: onedrive.active
           syncing: onedrive.pendingCount > 0
+          indexing: root.indexingActive
           error: onedrive.lastError !== ""
         }
       }
@@ -263,13 +364,24 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
+        if (root.treePanelOpen) { root.moveTreeCursor(dy); return }
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
       }
-      onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
-      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onActivateRequested: {
+        if (root.treePanelOpen) { root.activateTreeRow(root.selectedTreeRow()); return }
+        if (root.cursorActive) root.activateCursor()
+      }
+      onCloseRequested: {
+        if (root.treePanelOpen) { root.treePanelOpen = false; return }
+        root.close()
+      }
+      onTabRequested: function(direction) { if (!root.treePanelOpen) root.switchPanel(direction) }
       onTextKey: function(t) {
+        if (root.treePanelOpen) {
+          if (t === "t" || t === "T") root.openTreeTerminal(root.selectedTreeRow())
+          return
+        }
         if (t === "r" || t === "R") onedrive.refresh()
         else if (t === "o" || t === "O") onedrive.openFolder()
         else if (t === "p" || t === "P") onedrive.toggleRunning()
@@ -314,6 +426,7 @@ Panel {
                   color: root.iconColor
                   active: onedrive.active
                   syncing: onedrive.pendingCount > 0
+                  indexing: root.indexingActive
                   error: onedrive.lastError !== ""
                 }
               }
@@ -369,6 +482,8 @@ Panel {
             InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable"); visible: !onedrive.isDavfsBackend }
             InfoPair { label: "Daemon"; value: root.stateText(onedrive.daemonReachable, "Reachable", "Unavailable"); visible: onedrive.isDavfsBackend }
             InfoPair { label: "Token"; value: onedrive.authenticated ? tokenExpiryText() : "missing"; visible: onedrive.isDavfsBackend }
+            InfoPair { label: "Index"; value: indexProgressText(); visible: onedrive.isDavfsBackend }
+            InfoPair { label: "Tick"; value: tickMetaText(); visible: onedrive.isDavfsBackend }
             InfoPair { label: "Mount"; value: onedrive.mountPointExpanded }
             InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs); visible: !onedrive.isDavfsBackend }
             InfoPair { label: "Pending"; value: String(onedrive.pendingCount); visible: !onedrive.isDavfsBackend }
@@ -436,6 +551,17 @@ Panel {
                     : "Finish remote authorization without exposing tokens to QML")
                 enabled: onedrive.canReconnect
               }
+
+              ActionRow {
+                width: parent.width
+                visible: onedrive.isDavfsBackend
+                height: visible ? implicitHeight : 0
+                rowIndex: 3
+                iconText: "󰉋"
+                title: "Browse folders"
+                subtitle: onedrive.indexEnabled ? indexProgressText() : "Metadata index disabled"
+                enabled: onedrive.authenticated
+              }
             }
           }
 
@@ -493,6 +619,129 @@ Panel {
               font.pixelSize: Style.font.caption
               horizontalAlignment: Text.AlignHCenter
             }
+          }
+        }
+      }
+
+      Rectangle {
+        id: treeOverlay
+        anchors.fill: parent
+        visible: opacity > 0
+        opacity: root.treePanelOpen ? 1 : 0
+        scale: root.treePanelOpen ? 1.0 : 0.97
+        color: Color.popups.background
+        border.color: Color.popups.border
+        border.width: 1
+        radius: Style.space(4)
+
+        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutQuad } }
+        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutQuad } }
+
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+        }
+
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: Style.space(10)
+          spacing: Style.space(8)
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(8)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "󰉋"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.icon
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              Layout.fillWidth: true
+              text: "Folders"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              elide: Text.ElideRight
+            }
+
+            PanelActionButton {
+              iconText: "󰅖"
+              tooltipText: "Close"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.treePanelOpen = false
+            }
+          }
+
+          PanelSeparator {
+            Layout.fillWidth: true
+            foreground: root.foreground
+          }
+
+          Text {
+            visible: onedrive.treeError !== ""
+            Layout.fillWidth: true
+            text: onedrive.treeError
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: treeRows.length === 0 && onedrive.treeError === ""
+            Layout.fillWidth: true
+            text: onedrive.treeLoading ? "Loading folder list…" : "No folders in the index yet."
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            horizontalAlignment: Text.AlignHCenter
+          }
+
+          Flickable {
+            id: treeOverlayFlick
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: width
+            contentHeight: treeColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            interactive: contentHeight > height
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            Column {
+              id: treeColumn
+              visible: treeRows.length > 0
+              width: treeOverlayFlick.width
+              spacing: Style.space(2)
+
+              Repeater {
+                model: treeRows
+                TreeRow {
+                  required property var modelData
+                  required property int index
+                  width: treeColumn.width
+                  row: modelData
+                  rowIndex: index
+                }
+              }
+            }
+          }
+
+          Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: "Shortcuts: ↑↓ navigate · Enter expand/collapse · T terminal · Esc close"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
           }
         }
       }
@@ -718,6 +967,76 @@ Panel {
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
         }
+      }
+    }
+  }
+
+  component TreeRow: CursorSurface {
+    id: treeRow
+    property var row: null
+    property int rowIndex: 0
+
+    hasCursor: root.treePanelOpen && root.treeIndex === rowIndex
+    foreground: root.foreground
+    implicitHeight: treeContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.setTreeCursor(treeRow.rowIndex)
+      onClicked: root.activateTreeRow(treeRow.row)
+    }
+
+    RowLayout {
+      id: treeContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10) + (treeRow.row && treeRow.row.depth ? treeRow.row.depth : 0) * Style.space(12)
+      anchors.rightMargin: Style.space(8)
+      spacing: Style.space(6)
+
+      Text {
+        textFormat: Text.PlainText
+        text: treeRow.row && treeRow.row.expanded ? "▾" : "▸"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        Layout.preferredWidth: Style.space(10)
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        text: "󰉋"
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.icon
+        Layout.alignment: Qt.AlignVCenter
+      }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(1)
+
+        Text {
+          textFormat: Text.PlainText
+          Layout.fillWidth: true
+          text: treeRow.row ? String(treeRow.row.name || "") : ""
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          elide: Text.ElideRight
+        }
+      }
+
+      PanelActionButton {
+        iconText: "󰆍"
+        tooltipText: "Open terminal here"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: root.openTreeTerminal(treeRow.row)
       }
     }
   }

@@ -8,6 +8,7 @@ Item {
   property color color: Color.foreground
   property bool active: false
   property bool syncing: false
+  property bool indexing: false
   property bool error: false
 
   width: iconSize * 1.15
@@ -32,4 +33,15 @@ Item {
     PropertyAnimation { to: 0.65; duration: 650; easing.type: Easing.InOutQuad }
     PropertyAnimation { to: 1.0; duration: 650; easing.type: Easing.InOutQuad }
   }
+
+  RotationAnimator on rotation {
+    running: root.indexing && !root.error
+    loops: Animation.Infinite
+    from: 0
+    to: 360
+    duration: 1200
+  }
+
+  onIndexingChanged: if (!indexing) rotation = 0
+  onErrorChanged: if (error) rotation = 0
 }

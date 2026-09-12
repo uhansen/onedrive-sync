@@ -14,15 +14,19 @@ two interchangeable backends, selected with the `backend` setting:
   resulting WebDAV endpoint.
 
 In both cases, **the plugin only polls status, launches a sign-in helper,
-and issues one-shot control commands** -- it never touches OAuth tokens,
-client secrets, or network I/O directly. No OAuth tokens or network code
-live in QML.
+and issues one-shot control commands** -- it never touches OAuth tokens
+or Graph. For `wasm_davfs`, `tree_davfs.py` reads the local WebDAV
+Basic-auth secret from `envFile` (same user/trust boundary as the daemon
+timer) to call `/_status` and `/_tree`. That secret is not an OAuth token
+and is never shown in QML.
 
 ## Features
 
 - Bar icon showing idle / syncing / paused / error states
 - Panel with remote/unit, mount path, auth state, and (backend-dependent)
   last sync time, pending count, and queued bytes
+- For `wasm_davfs`: metadata-index progress (items indexed, last `/delta`
+  tick rate) and a folder tree with **Open terminal here** (`xdg-terminal-exec --dir=`)
 - `Sync now` action using rclone's local RC endpoint (`rclone_mount` only --
   WebDAV/davfs2 has no equivalent discrete sync job, so this action is
   hidden for `wasm_davfs`)
@@ -61,6 +65,9 @@ The in-plugin **Reconnect** button is for re-authorization, not first-time setup
    - `mountPoint` to match your davfs2 mount point
    - `daemonServiceUnit` / `mountServiceUnit` to match the unit names you used
    - `stateDir` to the directory containing `onedrive-davfs`'s `token.json`
+   - `envFile` to the chmod-600 daemon env file (used only to read the
+     local WebDAV Basic-auth secret for `/_status` and `/_tree`; OAuth
+     tokens are never read)
    - `reconnectCommand` to the exact command that re-runs
      `onedrive-davfs`'s device-code sign-in, e.g.:
      `ONEDRIVE_CLIENT_ID=<your-app-id> /path/to/onedrive-davfs/tools/device-code-login.sh`

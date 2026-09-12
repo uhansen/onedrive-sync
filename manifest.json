@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "onedrive-sync",
   "name": "OneDrive Sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "uhansen",
   "license": "MIT",
   "description": "Monitor and control an external OneDrive sync backend (rclone mount or the onedrive-davfs WebDAV daemon) from the Omarchy bar.",
@@ -29,6 +29,7 @@
       "daemonServiceUnit": "onedrive-davfs.service",
       "mountServiceUnit": "onedrive-davfs-mount.service",
       "stateDir": "~/.local/state/onedrive-davfs",
+      "envFile": "~/.config/onedrive-davfs/env",
       "reconnectCommand": ""
     },
     "schema": [
@@ -103,6 +104,13 @@
         "label": "onedrive-davfs state directory",
         "defaultValue": "~/.local/state/onedrive-davfs",
         "description": "Directory containing onedrive-davfs's token.json. Only its non-secret expiry timestamp is ever read."
+      },
+      {
+        "key": "envFile",
+        "type": "path",
+        "label": "onedrive-davfs env file",
+        "defaultValue": "~/.config/onedrive-davfs/env",
+        "description": "chmod-600 environment file used only to read the local WebDAV Basic-auth secret for /_status and /_tree. OAuth tokens are never read from this file."
       },
       {
         "key": "reconnectCommand",

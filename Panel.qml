@@ -499,6 +499,9 @@ Panel {
         if (root.treePanelOpen) { root.closeTreePanel(); return }
         root.close()
       }
+      onDeleteRequested: {
+        if (root.treePanelOpen) root.triggerBrowserShortcut("x")
+      }
       onTabRequested: function(direction) { if (!root.treePanelOpen) root.switchPanel(direction) }
       onTextKey: function(t) {
         if (root.treePanelOpen) {

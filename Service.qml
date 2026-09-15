@@ -63,6 +63,7 @@ Item {
   property bool searchReady: true
   property bool searchTruncated: false
   property string searchError: ""
+  property string searchSubmittedQuery: ""
   property string copyDestination: stringSetting("copyDestination", "~/Downloads/OneDrive")
   property var pendingCopyEntry: null
 
@@ -344,6 +345,7 @@ Item {
       searchDebounce.restart()
       return
     }
+    searchSubmittedQuery = searchQuery
     searchProcess.command = ["python3", helperPathTree, "search", envFile, davfsUrl, searchQuery]
     searchProcess.running = true
   }
@@ -621,6 +623,12 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(searchStdout.text || "")
       var stderr = String(searchStderr.text || "")
+      var submittedQuery = root.searchSubmittedQuery
+      root.searchSubmittedQuery = ""
+      if (submittedQuery !== root.searchQuery) {
+        if (root.searchQuery.length >= 2) searchDebounce.restart()
+        return
+      }
       if (exitCode === 0) root.applySearchResults(stdout)
       else {
         root.searchError = root.elideStatus(stderr || stdout || "Search failed")

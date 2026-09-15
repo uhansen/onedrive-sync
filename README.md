@@ -23,10 +23,18 @@ and is never shown in QML.
 ## Features
 
 - Bar icon showing idle / syncing / paused / error states
-- Panel with remote/unit, mount path, auth state, and (backend-dependent)
-  last sync time, pending count, and queued bytes
+- Panel with Browse folders at the top, refresh and reconnect controls beside
+  the mount toggle, and an expandable statistics section at the bottom
+  (collapsed by default)
 - For `wasm_davfs`: metadata-index progress (items indexed, last `/delta`
-  tick rate) and a folder tree with **Open terminal here** (`xdg-terminal-exec --dir=`)
+  tick rate), a folder tree, and indexed search across files and folders
+- Searched folders provide separate actions to open a terminal, open the file
+  explorer, copy the whole folder, or copy only its contents; destination
+  selection uses the native desktop folder picker and never overwrites files
+- The Browse folders header provides those same actions for the OneDrive root
+- Browse folders is keyboard-operable: Up/Down moves between root and result
+  rows, Left/Right selects inline actions, Enter runs the selected action, and
+  T/F/C/X/M provide terminal, open, copy, copy-contents, and mail shortcuts
 - `Sync now` action using rclone's local RC endpoint (`rclone_mount` only --
   WebDAV/davfs2 has no equivalent discrete sync job, so this action is
   hidden for `wasm_davfs`)

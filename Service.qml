@@ -63,6 +63,7 @@ Item {
   property bool searchReady: true
   property bool searchTruncated: false
   property string searchError: ""
+  property string searchSubmittedQuery: ""
   property string copyDestination: stringSetting("copyDestination", "~/Downloads/OneDrive")
   property var pendingCopyEntry: null
 
@@ -128,6 +129,18 @@ Item {
       statusProcess.command = ["python3", helperPath, remoteName, mountPoint, serviceUnit, rcAddr, "25"]
     }
     statusProcess.running = true
+  }
+
+  function refreshView() {
+    refresh()
+    if (isDavfsBackend) {
+      treeByPath = ({})
+      treeExpanded = ({})
+      treeError = ""
+      browserRefreshTimer.restart()
+    }
+    actionStatus = "Refreshing OneDrive view…"
+    actionStatusTimer.restart()
   }
 
   function applyStatus(raw) {
@@ -332,6 +345,7 @@ Item {
       searchDebounce.restart()
       return
     }
+    searchSubmittedQuery = searchQuery
     searchProcess.command = ["python3", helperPathTree, "search", envFile, davfsUrl, searchQuery]
     searchProcess.running = true
   }
@@ -349,9 +363,14 @@ Item {
     searchResults = parsed.results || []
   }
 
-  function copyEntry(path, isDir, name) {
+  function copyEntry(path, isDir, name, copyContents) {
     if (pickFolderProcess.running) return
-    pendingCopyEntry = { path: path, isDir: isDir, name: name }
+    pendingCopyEntry = {
+      path: path,
+      isDir: isDir,
+      name: name,
+      copyContents: isDir && copyContents === true
+    }
     pickFolderProcess.command = ["/usr/bin/python3", helperPathPickFolder, copyDestination]
     pickFolderProcess.running = true
   }
@@ -369,6 +388,14 @@ Item {
     if (!abs) return
     Quickshell.execDetached(["xdg-open", abs])
     actionStatus = "Opened"
+    actionStatusTimer.restart()
+  }
+
+  function openFolderAt(path) {
+    var abs = localPathFor(path)
+    if (!abs) return
+    Quickshell.execDetached(["uwsm-app", "--", "nautilus", abs])
+    actionStatus = "Opened folder"
     actionStatusTimer.restart()
   }
 
@@ -486,6 +513,20 @@ Item {
     onTriggered: root.runSearch()
   }
 
+  Timer {
+    id: browserRefreshTimer
+    interval: 250
+    repeat: false
+    onTriggered: {
+      if (treeProcess.running || searchProcess.running) {
+        browserRefreshTimer.restart()
+        return
+      }
+      root.fetchTree("/")
+      if (root.searchQuery.length >= 2) root.runSearch()
+    }
+  }
+
   Process {
     id: statusProcess
     running: false
@@ -582,6 +623,12 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(searchStdout.text || "")
       var stderr = String(searchStderr.text || "")
+      var submittedQuery = root.searchSubmittedQuery
+      root.searchSubmittedQuery = ""
+      if (submittedQuery !== root.searchQuery) {
+        if (root.searchQuery.length >= 2) searchDebounce.restart()
+        return
+      }
       if (exitCode === 0) root.applySearchResults(stdout)
       else {
         root.searchError = root.elideStatus(stderr || stdout || "Search failed")
@@ -603,9 +650,10 @@ Item {
       if (exitCode !== 0 || dest === "" || !entry) return
       var src = root.localPathFor(entry.path)
       if (!src) return
-      var cmd = "mkdir -p -- " + root.shellQuote(dest) + " && cp -R -n -- " + root.shellQuote(src) + " " + root.shellQuote(dest) + "/"
+      var source = entry.copyContents ? root.shellQuote(src + "/.") : root.shellQuote(src)
+      var cmd = "mkdir -p -- " + root.shellQuote(dest) + " && cp -R -n -- " + source + " " + root.shellQuote(dest) + "/"
       Quickshell.execDetached(["sh", "-c", cmd])
-      root.actionStatus = "Copied to " + dest
+      root.actionStatus = (entry.copyContents ? "Copied folder contents to " : "Copied to ") + dest
       actionStatusTimer.restart()
     }
   }

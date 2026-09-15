@@ -130,6 +130,18 @@ Item {
     statusProcess.running = true
   }
 
+  function refreshView() {
+    refresh()
+    if (isDavfsBackend) {
+      treeByPath = ({})
+      treeExpanded = ({})
+      treeError = ""
+      browserRefreshTimer.restart()
+    }
+    actionStatus = "Refreshing OneDrive view…"
+    actionStatusTimer.restart()
+  }
+
   function applyStatus(raw) {
     var parsed = Model.parseStatus(raw)
     if (!parsed.ok) {
@@ -349,9 +361,14 @@ Item {
     searchResults = parsed.results || []
   }
 
-  function copyEntry(path, isDir, name) {
+  function copyEntry(path, isDir, name, copyContents) {
     if (pickFolderProcess.running) return
-    pendingCopyEntry = { path: path, isDir: isDir, name: name }
+    pendingCopyEntry = {
+      path: path,
+      isDir: isDir,
+      name: name,
+      copyContents: isDir && copyContents === true
+    }
     pickFolderProcess.command = ["/usr/bin/python3", helperPathPickFolder, copyDestination]
     pickFolderProcess.running = true
   }
@@ -369,6 +386,14 @@ Item {
     if (!abs) return
     Quickshell.execDetached(["xdg-open", abs])
     actionStatus = "Opened"
+    actionStatusTimer.restart()
+  }
+
+  function openFolderAt(path) {
+    var abs = localPathFor(path)
+    if (!abs) return
+    Quickshell.execDetached(["uwsm-app", "--", "nautilus", abs])
+    actionStatus = "Opened folder"
     actionStatusTimer.restart()
   }
 
@@ -484,6 +509,20 @@ Item {
     interval: 250
     repeat: false
     onTriggered: root.runSearch()
+  }
+
+  Timer {
+    id: browserRefreshTimer
+    interval: 250
+    repeat: false
+    onTriggered: {
+      if (treeProcess.running || searchProcess.running) {
+        browserRefreshTimer.restart()
+        return
+      }
+      root.fetchTree("/")
+      if (root.searchQuery.length >= 2) root.runSearch()
+    }
   }
 
   Process {
@@ -603,9 +642,10 @@ Item {
       if (exitCode !== 0 || dest === "" || !entry) return
       var src = root.localPathFor(entry.path)
       if (!src) return
-      var cmd = "mkdir -p -- " + root.shellQuote(dest) + " && cp -R -n -- " + root.shellQuote(src) + " " + root.shellQuote(dest) + "/"
+      var source = entry.copyContents ? root.shellQuote(src + "/.") : root.shellQuote(src)
+      var cmd = "mkdir -p -- " + root.shellQuote(dest) + " && cp -R -n -- " + source + " " + root.shellQuote(dest) + "/"
       Quickshell.execDetached(["sh", "-c", cmd])
-      root.actionStatus = "Copied to " + dest
+      root.actionStatus = (entry.copyContents ? "Copied folder contents to " : "Copied to ") + dest
       actionStatusTimer.restart()
     }
   }

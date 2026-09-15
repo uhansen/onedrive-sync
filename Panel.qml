@@ -17,9 +17,13 @@ Panel {
   property int actionIndex: 0
   property int fileIndex: 0
   property int treeIndex: 0
+  property int searchIndex: 0
+  property int browserActionIndex: 0
+  property string browserFocus: "root"
   property bool cursorActive: false
   property int phraseIndex: 0
   property bool treePanelOpen: false
+  property bool statisticsExpanded: false
 
   readonly property var activePhrases: [
     "Mounting memories",
@@ -86,8 +90,8 @@ Panel {
   }
 
   readonly property var treeRows: Model.flattenTree(onedrive.treeByPath, onedrive.treeExpanded, "/")
-  readonly property int minActionIndex: onedrive.isDavfsBackend ? 1 : 0
-  readonly property int maxActionIndex: onedrive.isDavfsBackend ? 3 : 2
+  readonly property int minActionIndex: 0
+  readonly property int maxActionIndex: 1
   readonly property bool indexingActive: onedrive.isDavfsBackend && onedrive.indexEnabled && !onedrive.crawlComplete
 
   function indexProgressText() {
@@ -174,6 +178,9 @@ Panel {
     treePanelOpen = true
     onedrive.ensureTreeRoot()
     treeIndex = 0
+    searchIndex = 0
+    browserActionIndex = 0
+    browserFocus = "root"
     var row = selectedTreeRow()
     if (row) onedrive.selectedTreePath = row.path
   }
@@ -183,12 +190,58 @@ Panel {
     if (onedrive.searchQuery !== "") onedrive.updateSearchQuery("")
   }
 
-  function moveTreeCursor(dy) {
-    if (treeRows.length === 0 || dy === 0) return
-    treeIndex = Math.max(0, Math.min(treeRows.length - 1, treeIndex + dy))
-    var row = selectedTreeRow()
-    if (row) onedrive.selectedTreePath = row.path
-    scrollTreeCursorIntoView()
+  function browserRows() {
+    return onedrive.searchQuery.length >= 2 ? onedrive.searchResults : treeRows
+  }
+
+  function selectedBrowserEntry() {
+    if (browserFocus === "root") return { path: "/", name: "OneDrive", isDir: true, root: true }
+    var rows = browserRows()
+    if (rows.length === 0) return null
+    var index = onedrive.searchQuery.length >= 2 ? searchIndex : treeIndex
+    return rows[Math.max(0, Math.min(rows.length - 1, index))]
+  }
+
+  function browserActionCount(entry) {
+    return entry && entry.isDir ? 4 : 3
+  }
+
+  function moveBrowserCursor(dx, dy) {
+    var rows = browserRows()
+    if (dy > 0 && browserFocus === "root" && rows.length > 0) {
+      browserFocus = "rows"
+      browserActionIndex = -1
+    } else if (dy < 0 && browserFocus === "rows") {
+      var current = onedrive.searchQuery.length >= 2 ? searchIndex : treeIndex
+      if (current === 0) {
+        browserFocus = "root"
+        browserActionIndex = 0
+      } else if (onedrive.searchQuery.length >= 2) {
+        searchIndex = current - 1
+      } else {
+        treeIndex = current - 1
+      }
+    } else if (dy > 0 && browserFocus === "rows" && rows.length > 0) {
+      if (onedrive.searchQuery.length >= 2)
+        searchIndex = Math.min(rows.length - 1, searchIndex + 1)
+      else
+        treeIndex = Math.min(rows.length - 1, treeIndex + 1)
+    }
+
+    var entry = selectedBrowserEntry()
+    if (dx > 0 && entry)
+      browserActionIndex = Math.min(browserActionCount(entry) - 1, browserActionIndex + 1)
+    else if (dx < 0)
+      browserActionIndex = Math.max(browserFocus === "root" ? 0 : -1, browserActionIndex - 1)
+
+    if (browserFocus === "rows") {
+      if (onedrive.searchQuery.length >= 2) scrollSearchCursorIntoView()
+      else {
+        var row = selectedTreeRow()
+        if (row) onedrive.selectedTreePath = row.path
+        scrollTreeCursorIntoView()
+      }
+    }
   }
 
   function selectedTreeRow() {
@@ -210,6 +263,49 @@ Panel {
     else onedrive.openTerminalAt(treeParentPath(row.path))
   }
 
+  function triggerBrowserAction(entry, index) {
+    if (!entry) return
+    var path = String(entry.path || "/")
+    var isDir = entry.isDir === true
+    if (isDir) {
+      if (index === 0) onedrive.openTerminalAt(path)
+      else if (index === 1) onedrive.openFolderAt(path)
+      else if (index === 2) onedrive.copyEntry(path, true, entry.name || "OneDrive")
+      else if (index === 3) onedrive.copyEntry(path, true, entry.name || "OneDrive", true)
+    } else {
+      if (index === 0) onedrive.openEntry(path)
+      else if (index === 1) onedrive.copyEntry(path, false, entry.name || "")
+      else if (index === 2) onedrive.mailEntry(path)
+    }
+  }
+
+  function activateBrowserCursor() {
+    var entry = selectedBrowserEntry()
+    if (!entry) return
+    if (browserFocus === "rows" && browserActionIndex < 0) {
+      if (onedrive.searchQuery.length >= 2) {
+        if (entry.isDir) onedrive.openFolderAt(entry.path)
+        else onedrive.openEntry(entry.path)
+      }
+      else activateTreeRow(entry)
+      return
+    }
+    triggerBrowserAction(entry, browserActionIndex)
+  }
+
+  function triggerBrowserShortcut(key) {
+    var entry = selectedBrowserEntry()
+    if (!entry) return
+    var value = String(key || "").toLowerCase()
+    if (value === "t" && entry.isDir) onedrive.openTerminalAt(entry.path)
+    else if (value === "f") {
+      if (entry.isDir) onedrive.openFolderAt(entry.path)
+      else onedrive.openEntry(entry.path)
+    } else if (value === "c") onedrive.copyEntry(entry.path, entry.isDir, entry.name || "")
+    else if (value === "x" && entry.isDir) onedrive.copyEntry(entry.path, true, entry.name || "OneDrive", true)
+    else if (value === "m" && !entry.isDir) onedrive.mailEntry(entry.path)
+  }
+
   function openTreeTerminal(row) {
     if (!row) {
       onedrive.openTerminalAt(onedrive.selectedTreePath || "/")
@@ -220,16 +316,17 @@ Panel {
   }
 
   function setTreeCursor(index) {
+    browserFocus = "rows"
+    browserActionIndex = -1
     treeIndex = index
     var row = selectedTreeRow()
     if (row) onedrive.selectedTreePath = row.path
   }
 
   function triggerAction(index) {
-    if (index === 0 && !onedrive.isDavfsBackend) onedrive.syncNow()
+    if (index === 0 && onedrive.isDavfsBackend) root.openTreePanel()
+    else if (index === 0) onedrive.syncNow()
     else if (index === 1) onedrive.openFolder()
-    else if (index === 2) onedrive.reconnect()
-    else if (index === 3) root.openTreePanel()
   }
 
   function selectedFile() {
@@ -295,6 +392,23 @@ Panel {
     })
   }
 
+  function scrollSearchCursorIntoView() {
+    if (!searchResultsColumn || searchIndex < 0 || searchIndex >= searchResultsColumn.children.length) return
+    var item = searchResultsColumn.children[searchIndex]
+    if (!searchResultsFlick || !item) return
+    Qt.callLater(function() {
+      var margin = Style.space(6)
+      var point = item.mapToItem(searchResultsFlick.contentItem, 0, 0)
+      var top = point.y
+      var bottom = top + item.height
+      var viewTop = searchResultsFlick.contentY
+      var viewBottom = viewTop + searchResultsFlick.height
+      var maxY = Math.max(0, searchResultsFlick.contentHeight - searchResultsFlick.height)
+      if (top < viewTop + margin) searchResultsFlick.contentY = Math.max(0, top - margin)
+      else if (bottom > viewBottom - margin) searchResultsFlick.contentY = Math.min(maxY, bottom + margin - searchResultsFlick.height)
+    })
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -317,6 +431,9 @@ Panel {
     target: onedrive
     function onAuthenticatedChanged() { root.ensureCursor() }
     function onPendingFilesChanged() { root.ensureCursor() }
+    function onSearchResultsChanged() {
+      root.searchIndex = Math.max(0, Math.min(root.searchIndex, onedrive.searchResults.length - 1))
+    }
   }
 
   IpcHandler {
@@ -370,12 +487,12 @@ Panel {
       anchors.fill: parent
       blocked: searchField.activeFocus
       onMoveRequested: function(dx, dy) {
-        if (root.treePanelOpen) { root.moveTreeCursor(dy); return }
+        if (root.treePanelOpen) { root.moveBrowserCursor(dx, dy); return }
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
       }
       onActivateRequested: {
-        if (root.treePanelOpen) { root.activateTreeRow(root.selectedTreeRow()); return }
+        if (root.treePanelOpen) { root.activateBrowserCursor(); return }
         if (root.cursorActive) root.activateCursor()
       }
       onCloseRequested: {
@@ -385,7 +502,9 @@ Panel {
       onTabRequested: function(direction) { if (!root.treePanelOpen) root.switchPanel(direction) }
       onTextKey: function(t) {
         if (root.treePanelOpen) {
-          if (t === "t" || t === "T") root.openTreeTerminal(root.selectedTreeRow())
+          if (t === "t" || t === "T" || t === "f" || t === "F"
+              || t === "c" || t === "C" || t === "x" || t === "X"
+              || t === "m" || t === "M") root.triggerBrowserShortcut(t)
           else if (t === "/") Qt.callLater(function() { searchField.forceActiveFocus() })
           return
         }
@@ -438,20 +557,46 @@ Panel {
                 }
               }
               trailingControl: Component {
-                ToggleSwitch {
-                  id: powerSwitch
-                  visible: onedrive.serviceExists
-                  checked: onedrive.active
-                  busy: onedrive.busy
-                  hasCursor: header.ringVisible
-                  foreground: hero.foreground
-                  onHovered: function(on) { if (on) header.focusHero() }
-                  onToggled: onedrive.toggleRunning()
+                RowLayout {
+                  spacing: Style.space(6)
 
-                  PanelToolTip {
-                    visible: powerSwitch.containsMouse
-                    text: root.toggleHint
+                  PanelActionButton {
+                    iconText: "󰑐"
+                    tooltipText: "Refresh OneDrive view"
+                    visible: onedrive.authenticated
+                    enabled: !onedrive.refreshing
+                    foreground: hero.foreground
                     fontFamily: hero.fontFamily
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: onedrive.refreshView()
+                  }
+
+                  PanelActionButton {
+                    iconText: "󰌋"
+                    tooltipText: "Reconnect OneDrive"
+                    visible: onedrive.authenticated
+                    enabled: onedrive.canReconnect
+                    foreground: hero.foreground
+                    fontFamily: hero.fontFamily
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: onedrive.reconnect()
+                  }
+
+                  ToggleSwitch {
+                    id: powerSwitch
+                    visible: onedrive.serviceExists
+                    checked: onedrive.active
+                    busy: onedrive.busy
+                    hasCursor: header.ringVisible
+                    foreground: hero.foreground
+                    onHovered: function(on) { if (on) header.focusHero() }
+                    onToggled: onedrive.toggleRunning()
+
+                    PanelToolTip {
+                      visible: powerSwitch.containsMouse
+                      text: root.toggleHint
+                      fontFamily: hero.fontFamily
+                    }
                   }
                 }
               }
@@ -477,35 +622,6 @@ Panel {
           Column {
             visible: onedrive.authenticated || root.showHero
             width: parent.width
-            spacing: Style.spacing.labelGap
-
-            InfoPair { label: "Status"; value: onedrive.statusText }
-            InfoPair { label: "Backend"; value: onedrive.isDavfsBackend ? "WebDAV (davfs2)" : "rclone mount" }
-            InfoPair { label: "Remote"; value: onedrive.remoteName; visible: !onedrive.isDavfsBackend }
-            InfoPair { label: "Unit"; value: onedrive.isDavfsBackend ? onedrive.daemonServiceUnit : onedrive.serviceUnit }
-            InfoPair { label: "Service"; value: root.stateText(onedrive.running, "Running", (onedrive.serviceExists ? "Stopped" : "Missing")) }
-            InfoPair { label: "Mounted"; value: root.stateText(onedrive.mounted, "Yes", "No") }
-            InfoPair { label: "Auth"; value: root.stateText(onedrive.authenticated, "Ready", "Required") }
-            InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable"); visible: !onedrive.isDavfsBackend }
-            InfoPair { label: "Daemon"; value: root.stateText(onedrive.daemonReachable, "Reachable", "Unavailable"); visible: onedrive.isDavfsBackend }
-            InfoPair { label: "Token"; value: onedrive.authenticated ? tokenExpiryText() : "missing"; visible: onedrive.isDavfsBackend }
-            InfoPair { label: "Index"; value: indexProgressText(); visible: onedrive.isDavfsBackend }
-            InfoPair { label: "Tick"; value: tickMetaText(); visible: onedrive.isDavfsBackend }
-            InfoPair { label: "Mount"; value: onedrive.mountPointExpanded }
-            InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs); visible: !onedrive.isDavfsBackend }
-            InfoPair { label: "Pending"; value: String(onedrive.pendingCount); visible: !onedrive.isDavfsBackend }
-            InfoPair { label: "Queued"; value: Model.formatBytes(onedrive.bytesQueued); visible: !onedrive.isDavfsBackend }
-            InfoPair { label: "Transferred"; value: Model.formatBytes(onedrive.transferredBytes); visible: !onedrive.isDavfsBackend }
-          }
-
-          PanelSeparator {
-            visible: onedrive.authenticated || root.showHero
-            foreground: root.foreground
-          }
-
-          Column {
-            visible: onedrive.authenticated || root.showHero
-            width: parent.width
             spacing: Style.space(10)
 
             PanelSectionHeader {
@@ -520,19 +636,19 @@ Panel {
 
               ActionRow {
                 width: parent.width
-                visible: !onedrive.isDavfsBackend
-                height: visible ? implicitHeight : 0
                 rowIndex: 0
-                iconText: "󰑐"
-                title: "Sync now"
-                subtitle: !onedrive.installed
-                  ? "Install rclone first"
-                  : (!onedrive.running
-                    ? "Start " + onedrive.serviceUnit + " first"
-                    : (onedrive.rcAvailable
-                      ? "Request a VFS refresh through rclone RC"
-                      : "Enable --rc on the rclone service"))
-                enabled: onedrive.canSyncNow
+                iconText: onedrive.isDavfsBackend ? "󰉋" : "󰑐"
+                title: onedrive.isDavfsBackend ? "Browse folders" : "Sync now"
+                subtitle: onedrive.isDavfsBackend
+                  ? (onedrive.indexEnabled ? indexProgressText() : "Metadata index disabled")
+                  : (!onedrive.installed
+                    ? "Install rclone first"
+                    : (!onedrive.running
+                      ? "Start " + onedrive.serviceUnit + " first"
+                      : (onedrive.rcAvailable
+                        ? "Request a VFS refresh through rclone RC"
+                        : "Enable --rc on the rclone service")))
+                enabled: onedrive.isDavfsBackend ? onedrive.authenticated : onedrive.canSyncNow
               }
 
               ActionRow {
@@ -544,31 +660,6 @@ Panel {
                 enabled: onedrive.canOpenFolder
               }
 
-              ActionRow {
-                width: parent.width
-                rowIndex: 2
-                iconText: "󰌋"
-                title: onedrive.authenticated ? "Reconnect" : (onedrive.isDavfsBackend ? "Sign in" : "Authorize")
-                subtitle: onedrive.isDavfsBackend
-                  ? (onedrive.reconnectCommand === ""
-                    ? "Set a Reconnect command in plugin settings"
-                    : "Run the sign-in command in a floating terminal")
-                  : (onedrive.authenticated
-                    ? "Start rclone's OAuth re-authorization flow"
-                    : "Finish remote authorization without exposing tokens to QML")
-                enabled: onedrive.canReconnect
-              }
-
-              ActionRow {
-                width: parent.width
-                visible: onedrive.isDavfsBackend
-                height: visible ? implicitHeight : 0
-                rowIndex: 3
-                iconText: "󰉋"
-                title: "Browse folders"
-                subtitle: onedrive.indexEnabled ? indexProgressText() : "Metadata index disabled"
-                enabled: onedrive.authenticated
-              }
             }
           }
 
@@ -616,16 +707,105 @@ Panel {
               }
             }
 
-            Text {
-              visible: onedrive.authenticated || root.showHero
+          }
+
+          PanelSeparator {
+            visible: onedrive.authenticated || root.showHero
+            foreground: root.foreground
+          }
+
+          Column {
+            visible: onedrive.authenticated || root.showHero
+            width: parent.width
+            spacing: Style.space(8)
+
+            Item {
               width: parent.width
-              textFormat: Text.PlainText
-              text: "Shortcuts: R refresh · P pause/resume · O open folder · C authorize"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              horizontalAlignment: Text.AlignHCenter
+              implicitHeight: statisticsHeader.implicitHeight + Style.spacing.rowPaddingX
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.statisticsExpanded = !root.statisticsExpanded
+              }
+
+              RowLayout {
+                id: statisticsHeader
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                spacing: Style.space(8)
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: root.statisticsExpanded ? "▾" : "▸"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                PanelSectionHeader {
+                  Layout.fillWidth: true
+                  text: "STATISTICS"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: onedrive.isDavfsBackend ? indexProgressText() : onedrive.statusText
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                  Layout.maximumWidth: Style.space(190)
+                }
+              }
             }
+
+            Column {
+              visible: root.statisticsExpanded
+              width: parent.width
+              spacing: Style.spacing.labelGap
+
+              InfoPair { label: "Status"; value: onedrive.statusText }
+              InfoPair { label: "Backend"; value: onedrive.isDavfsBackend ? "WebDAV (davfs2)" : "rclone mount" }
+              InfoPair { label: "Remote"; value: onedrive.remoteName; visible: !onedrive.isDavfsBackend }
+              InfoPair { label: "Unit"; value: onedrive.isDavfsBackend ? onedrive.daemonServiceUnit : onedrive.serviceUnit }
+              InfoPair { label: "Service"; value: root.stateText(onedrive.running, "Running", (onedrive.serviceExists ? "Stopped" : "Missing")) }
+              InfoPair { label: "Mounted"; value: root.stateText(onedrive.mounted, "Yes", "No") }
+              InfoPair { label: "Auth"; value: root.stateText(onedrive.authenticated, "Ready", "Required") }
+              InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable"); visible: !onedrive.isDavfsBackend }
+              InfoPair { label: "Daemon"; value: root.stateText(onedrive.daemonReachable, "Reachable", "Unavailable"); visible: onedrive.isDavfsBackend }
+              InfoPair { label: "Token"; value: onedrive.authenticated ? tokenExpiryText() : "missing"; visible: onedrive.isDavfsBackend }
+              InfoPair { label: "Index"; value: indexProgressText(); visible: onedrive.isDavfsBackend }
+              InfoPair { label: "Tick"; value: tickMetaText(); visible: onedrive.isDavfsBackend }
+              InfoPair { label: "Mount"; value: onedrive.mountPointExpanded }
+              InfoPair { label: "Last sync"; value: Model.relativeTime(onedrive.lastSyncTs); visible: !onedrive.isDavfsBackend }
+              InfoPair { label: "Pending"; value: String(onedrive.pendingCount); visible: !onedrive.isDavfsBackend }
+              InfoPair { label: "Queued"; value: Model.formatBytes(onedrive.bytesQueued); visible: !onedrive.isDavfsBackend }
+              InfoPair { label: "Transferred"; value: Model.formatBytes(onedrive.transferredBytes); visible: !onedrive.isDavfsBackend }
+            }
+          }
+
+          Text {
+            visible: onedrive.authenticated || root.showHero
+            width: parent.width
+            textFormat: Text.PlainText
+            text: "R refresh · P mount · O folder · C reconnect"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
+          }
+
+          Item {
+            visible: onedrive.authenticated || root.showHero
+            width: parent.width
+            height: Style.space(4)
           }
         }
       }
@@ -690,6 +870,61 @@ Panel {
             foreground: root.foreground
           }
 
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(6)
+
+            Text {
+              textFormat: Text.PlainText
+              Layout.fillWidth: true
+              text: "OneDrive root"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
+            }
+
+            PanelActionButton {
+              iconText: "󰆍"
+              tooltipText: "Open root in terminal"
+              hasCursor: root.browserFocus === "root" && root.browserActionIndex === 0
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 0 } }
+              onClicked: onedrive.openTerminalAt("/")
+            }
+
+            PanelActionButton {
+              iconText: "󰉋"
+              tooltipText: "Open root in Files"
+              hasCursor: root.browserFocus === "root" && root.browserActionIndex === 1
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 1 } }
+              onClicked: onedrive.openFolderAt("/")
+            }
+
+            PanelActionButton {
+              iconText: "󰆏"
+              tooltipText: "Copy OneDrive folder to…"
+              hasCursor: root.browserFocus === "root" && root.browserActionIndex === 2
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 2 } }
+              onClicked: onedrive.copyEntry("/", true, "OneDrive")
+            }
+
+            PanelActionButton {
+              iconText: "󰉍"
+              tooltipText: "Copy root contents to…"
+              hasCursor: root.browserFocus === "root" && root.browserActionIndex === 3
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 3 } }
+              onClicked: onedrive.copyEntry("/", true, "OneDrive", true)
+            }
+          }
+
           TextField {
             id: searchField
             Layout.fillWidth: true
@@ -706,6 +941,17 @@ Panel {
                 root.closeTreePanel()
                 keyCatcher.forceActiveFocus()
               }
+            }
+            Keys.onDownPressed: {
+              root.browserFocus = onedrive.searchResults.length > 0 ? "rows" : "root"
+              root.searchIndex = 0
+              root.browserActionIndex = root.browserFocus === "rows" ? -1 : 0
+              keyCatcher.forceActiveFocus()
+            }
+            Keys.onUpPressed: {
+              root.browserFocus = "root"
+              root.browserActionIndex = 0
+              keyCatcher.forceActiveFocus()
             }
           }
 
@@ -825,8 +1071,10 @@ Panel {
                 model: onedrive.searchResults
                 SearchResultRow {
                   required property var modelData
+                  required property int index
                   width: searchResultsColumn.width
                   entry: modelData
+                  rowIndex: index
                 }
               }
             }
@@ -836,12 +1084,13 @@ Panel {
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: onedrive.searchQuery.length >= 2
-              ? "Shortcuts: Esc clear search"
-              : "Shortcuts: ↑↓ navigate · Enter expand/collapse · T terminal · / search · Esc close"
+              ? "↑↓ rows · ←→ actions · Enter run · F open · C copy · X contents · M mail"
+              : "↑↓ rows · ←→ actions · Enter run/expand · T terminal · F files · C copy · X contents"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
           }
         }
       }
@@ -1076,7 +1325,8 @@ Panel {
     property var row: null
     property int rowIndex: 0
 
-    hasCursor: root.treePanelOpen && root.treeIndex === rowIndex
+    hasCursor: root.treePanelOpen && root.browserFocus === "rows"
+      && onedrive.searchQuery.length < 2 && root.treeIndex === rowIndex
     foreground: root.foreground
     implicitHeight: treeContent.implicitHeight + Style.spacing.rowPaddingX
 
@@ -1133,21 +1383,94 @@ Panel {
       PanelActionButton {
         iconText: "󰆍"
         tooltipText: "Open terminal here"
+        hasCursor: treeRow.hasCursor && root.browserActionIndex === 0
         foreground: root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter
+        onHovered: function(on) {
+          if (on) {
+            root.setTreeCursor(treeRow.rowIndex)
+            root.browserActionIndex = 0
+          }
+        }
         onClicked: root.openTreeTerminal(treeRow.row)
+      }
+
+      PanelActionButton {
+        iconText: "󰉋"
+        tooltipText: "Open in Files"
+        hasCursor: treeRow.hasCursor && root.browserActionIndex === 1
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onHovered: function(on) {
+          if (on) {
+            root.setTreeCursor(treeRow.rowIndex)
+            root.browserActionIndex = 1
+          }
+        }
+        onClicked: onedrive.openFolderAt(treeRow.row.path)
+      }
+
+      PanelActionButton {
+        iconText: "󰆏"
+        tooltipText: "Copy folder to…"
+        hasCursor: treeRow.hasCursor && root.browserActionIndex === 2
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onHovered: function(on) {
+          if (on) {
+            root.setTreeCursor(treeRow.rowIndex)
+            root.browserActionIndex = 2
+          }
+        }
+        onClicked: onedrive.copyEntry(treeRow.row.path, true, treeRow.row.name)
+      }
+
+      PanelActionButton {
+        iconText: "󰉍"
+        tooltipText: "Copy folder contents to…"
+        hasCursor: treeRow.hasCursor && root.browserActionIndex === 3
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onHovered: function(on) {
+          if (on) {
+            root.setTreeCursor(treeRow.rowIndex)
+            root.browserActionIndex = 3
+          }
+        }
+        onClicked: onedrive.copyEntry(treeRow.row.path, true, treeRow.row.name, true)
       }
     }
   }
 
-  component SearchResultRow: Rectangle {
+  component SearchResultRow: CursorSurface {
     id: resultRow
     property var entry: null
+    property int rowIndex: 0
     readonly property bool isDir: !!(entry && entry.isDir)
 
-    color: "transparent"
+    hasCursor: root.treePanelOpen && root.browserFocus === "rows"
+      && onedrive.searchQuery.length >= 2 && root.searchIndex === rowIndex
+    foreground: root.foreground
     implicitHeight: resultContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: {
+        root.browserFocus = "rows"
+        root.searchIndex = resultRow.rowIndex
+        root.browserActionIndex = -1
+      }
+      onClicked: {
+        if (resultRow.isDir) onedrive.openFolderAt(resultRow.entry.path)
+        else onedrive.openEntry(resultRow.entry.path)
+      }
+    }
 
     RowLayout {
       id: resultContent
@@ -1193,8 +1516,32 @@ Panel {
       }
 
       PanelActionButton {
+        visible: resultRow.isDir
+        iconText: "󰆍"
+        tooltipText: "Open terminal here"
+        hasCursor: resultRow.hasCursor && root.browserActionIndex === 0
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: onedrive.openTerminalAt(resultRow.entry.path)
+      }
+
+      PanelActionButton {
+        visible: resultRow.isDir
+        iconText: "󰉋"
+        tooltipText: "Open in Files"
+        hasCursor: resultRow.hasCursor && root.browserActionIndex === 1
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: onedrive.openFolderAt(resultRow.entry.path)
+      }
+
+      PanelActionButton {
+        visible: !resultRow.isDir
         iconText: "󰏋"
         tooltipText: "Open"
+        hasCursor: resultRow.hasCursor && root.browserActionIndex === 0
         foreground: root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter
@@ -1203,7 +1550,8 @@ Panel {
 
       PanelActionButton {
         iconText: "󰆏"
-        tooltipText: "Copy to…"
+        tooltipText: resultRow.isDir ? "Copy folder to…" : "Copy to…"
+        hasCursor: resultRow.hasCursor && root.browserActionIndex === (resultRow.isDir ? 2 : 1)
         foreground: root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter
@@ -1211,9 +1559,21 @@ Panel {
       }
 
       PanelActionButton {
+        iconText: "󰉍"
+        tooltipText: "Copy folder contents to…"
+        visible: resultRow.isDir
+        hasCursor: resultRow.hasCursor && root.browserActionIndex === 3
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: onedrive.copyEntry(resultRow.entry.path, true, resultRow.entry.name, true)
+      }
+
+      PanelActionButton {
         iconText: "󰇮"
         tooltipText: "Mail"
         visible: !resultRow.isDir
+        hasCursor: resultRow.hasCursor && root.browserActionIndex === 2
         foreground: root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter

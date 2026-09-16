@@ -68,7 +68,16 @@ The in-plugin **Reconnect** button is for re-authorization, not first-time setup
    `tools/device-code-login.sh` once, and enabling its systemd units
    (`onedrive-davfs.service` and, optionally, `onedrive-davfs-mount.service`)
 2. Mount the daemon's WebDAV endpoint at your chosen mount point with `davfs2`
-3. In this plugin's settings, set:
+   via either:
+   - an `/etc/fstab` entry, or
+   - an `onedrive-davfs-mount.service` user unit
+3. If you use both an `/etc/fstab` entry and a user mount unit for the same
+   mount point, do **not** duplicate davfs options in the unit's
+   `ExecStart=mount.davfs ... -o ...` line. Invoke `mount %h/OneDrive`
+   (or your chosen mount point) instead so the unit reuses the authoritative
+   options from `/etc/fstab` and avoids davfs errors like
+   `different dir_mode in /etc/fstab`.
+4. In this plugin's settings, set:
    - `backend` = `wasm_davfs`
    - `mountPoint` to match your davfs2 mount point
    - `daemonServiceUnit` / `mountServiceUnit` to match the unit names you used

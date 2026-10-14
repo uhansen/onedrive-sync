@@ -16,10 +16,11 @@
     "displayName": "OneDrive Sync",
     "description": "Status, reconnect, refresh, and folder controls for an rclone-backed or onedrive-davfs-backed OneDrive mount.",
     "category": "Files",
-    "allowMultiple": false,
+    "allowMultiple": true,
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 30,
+      "profileLabel": "",
       "remoteName": "onedrive",
       "mountPoint": "~/OneDrive",
       "serviceUnit": "rclone-onedrive.service",
@@ -42,6 +43,13 @@
         "max": 3600,
         "step": 5,
         "defaultValue": 30
+      },
+      {
+        "key": "profileLabel",
+        "type": "string",
+        "label": "Profile label",
+        "defaultValue": "",
+        "description": "Optional label shown in the panel for this OneDrive or Microsoft 365 library instance, e.g. \"Work\", \"Personal\", or \"Engineering docs\"."
       },
       {
         "key": "remoteName",

@@ -27,7 +27,8 @@ and is never shown in QML.
   the mount toggle, and an expandable statistics section at the bottom
   (collapsed by default)
 - For `wasm_davfs`: metadata-index progress (items indexed, last `/delta`
-  tick rate), a folder tree, and indexed search across files and folders
+  tick rate), the current bound Microsoft 365 library identity, a folder tree,
+  and indexed search across files and folders
 - Searched folders provide separate actions to open a terminal, open the file
   explorer, copy the whole folder, or copy only its contents; destination
   selection uses the native desktop folder picker and never overwrites files
@@ -86,8 +87,9 @@ The in-plugin **Reconnect** button is for re-authorization, not first-time setup
      local WebDAV Basic-auth secret for `/_status` and `/_tree`; OAuth
      tokens are never read)
    - `reconnectCommand` to the exact command that re-runs
-     `onedrive-davfs`'s device-code sign-in, e.g.:
-     `ONEDRIVE_CLIENT_ID=<your-app-id> /path/to/onedrive-davfs/tools/device-code-login.sh`
+     `onedrive-davfs` sign-in, e.g. either:
+     - `ONEDRIVE_CLIENT_ID=<your-app-id> /path/to/onedrive-davfs/tools/device-code-login.sh`
+     - `ONEDRIVE_CLIENT_ID=<your-app-id> python3 /path/to/onedrive-davfs/tools/browser-login.py`
 
 See the `onedrive-davfs` repo for full setup details (Azure app registration,
 device-code flow, systemd units, davfs2 mount) -- this plugin does not
@@ -148,6 +150,7 @@ omarchy plugin enable onedrive-sync
 The plugin exposes these configurable settings through Omarchy:
 
 - `refreshIntervalSec`
+- `profileLabel`
 - `backend` (`rclone_mount` or `wasm_davfs`)
 - `mountPoint`
 
@@ -173,6 +176,7 @@ Useful checks while iterating:
 omarchy plugin validate .
 python3 status.py onedrive ~/OneDrive rclone-onedrive.service 127.0.0.1:5572 25
 python3 status_davfs.py ~/OneDrive onedrive-davfs.service onedrive-davfs-mount.service ~/.local/state/onedrive-davfs http://127.0.0.1:8765/
+python3 tree_davfs.py libraries ~/.config/onedrive-davfs/env http://127.0.0.1:8765/ siteUrl:https://tenant.sharepoint.com/sites/Engineering
 ```
 
 

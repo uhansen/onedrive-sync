@@ -2,8 +2,9 @@
 """Authenticated JSON helper for onedrive-davfs plugin endpoints.
 
 Reads the local Basic-auth shared secret from the daemon env file (same
-trust boundary as tools/sync-tick.sh) and calls GET /_status or GET /_tree
-with X-OneDrive-Plugin: 1. Never prints the secret or OAuth tokens.
+trust boundary as tools/sync-tick.sh) and calls authenticated read-only
+plugin endpoints (`/_status`, `/_tree`, `/_search`, `/_libraries`) with
+X-OneDrive-Plugin: 1. Never prints the secret or OAuth tokens.
 """
 import base64
 import json
@@ -86,7 +87,7 @@ def main():
     davfs_url = sys.argv[3] if len(sys.argv) > 3 else "http://127.0.0.1:8765/"
     path = sys.argv[4] if len(sys.argv) > 4 else "/"
 
-    if action not in ("status", "tree", "search"):
+    if action not in ("status", "tree", "search", "libraries"):
         return fail("unknown action")
 
     secret, err = load_basic_secret(env_file)
@@ -95,6 +96,16 @@ def main():
 
     if action == "status":
         payload = request_json(join_url(davfs_url, "/_status"), secret, timeout=4)
+    elif action == "libraries":
+        query = {}
+        if path:
+            if path.startswith("group:"):
+                query["groupId"] = path.split(":", 1)[1]
+            elif path.startswith("site:"):
+                query["siteId"] = path.split(":", 1)[1]
+            elif path.startswith("siteUrl:"):
+                query["siteUrl"] = path.split(":", 1)[1]
+        payload = request_json(join_url(davfs_url, "/_libraries", query or None), secret, timeout=10)
     elif action == "search":
         payload = request_json(
             join_url(davfs_url, "/_search", {"q": path}),

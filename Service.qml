@@ -20,6 +20,7 @@ Item {
   readonly property bool active: _desired === -1 ? running : (_desired === 1)
   property bool refreshing: false
   property string statusText: "Checking…"
+  property string profileLabel: stringSetting("profileLabel", "")
   property string remoteName: stringSetting("remoteName", "onedrive")
   property string mountPoint: stringSetting("mountPoint", "~/OneDrive")
   property string mountPointExpanded: expandHome(mountPoint)
@@ -66,6 +67,13 @@ Item {
   property string searchSubmittedQuery: ""
   property string copyDestination: stringSetting("copyDestination", "~/Downloads/OneDrive")
   property var pendingCopyEntry: null
+  property string driveTenantId: ""
+  property string driveSelector: ""
+  property string driveId: ""
+  property string driveName: ""
+  property string driveType: ""
+  property string driveWebUrl: ""
+  property string driveOwner: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool treeLoading: treeProcess.running
@@ -170,8 +178,26 @@ Item {
     transferredBytes = Number(parsed.transferredBytes || 0)
     errorCount = Number(parsed.errorCount || 0)
     errors = parsed.errors || []
+    applyDriveMetadata(parsed)
     if (errors.length > 0 && !lastError) lastError = String(errors[0])
     else if (errors.length === 0) lastError = ""
+  }
+
+  function browserRootTitle() {
+    if (profileLabel !== "") return profileLabel
+    if (driveName !== "") return driveName
+    return "OneDrive"
+  }
+
+  function applyDriveMetadata(parsed) {
+    var drive = parsed && parsed.drive && typeof parsed.drive === "object" ? parsed.drive : {}
+    driveTenantId = String(drive.tenantId || "")
+    driveSelector = String(drive.selector || "")
+    driveId = String(drive.id || "")
+    driveName = String(drive.name || "")
+    driveType = String(drive.type || "")
+    driveWebUrl = String(drive.webUrl || "")
+    driveOwner = String(drive.owner || "")
   }
 
   function elideStatus(text) {
@@ -310,6 +336,7 @@ Item {
     lastTickAt = Number(parsed.lastTickAt || 0)
     lastTickApplied = Number(parsed.lastTickApplied || 0)
     lastTickDurationMs = Number(parsed.lastTickDurationMs || 0)
+    applyDriveMetadata(parsed)
     if (lastTickAt > 0) lastSyncTs = lastTickAt
   }
 

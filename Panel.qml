@@ -195,7 +195,7 @@ Panel {
   }
 
   function selectedBrowserEntry() {
-    if (browserFocus === "root") return { path: "/", name: "OneDrive", isDir: true, root: true }
+    if (browserFocus === "root") return { path: "/", name: onedrive.browserRootTitle(), isDir: true, root: true }
     var rows = browserRows()
     if (rows.length === 0) return null
     var index = onedrive.searchQuery.length >= 2 ? searchIndex : treeIndex
@@ -544,7 +544,7 @@ Panel {
             PanelHero {
               id: hero
               width: parent.width
-              title: onedrive.authenticated ? "OneDrive" : "OneDrive setup"
+              title: onedrive.authenticated ? onedrive.browserRootTitle() : (onedrive.profileLabel !== "" ? onedrive.profileLabel + " setup" : "OneDrive setup")
               meta: root.heroMeta
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -775,6 +775,12 @@ Panel {
               spacing: Style.spacing.labelGap
 
               InfoPair { label: "Status"; value: onedrive.statusText }
+              InfoPair { label: "Profile"; value: onedrive.profileLabel; visible: onedrive.profileLabel !== "" }
+              InfoPair { label: "Library"; value: onedrive.driveName; visible: onedrive.driveName !== "" }
+              InfoPair { label: "Library type"; value: onedrive.driveType; visible: onedrive.driveType !== "" }
+              InfoPair { label: "Owner"; value: onedrive.driveOwner; visible: onedrive.driveOwner !== "" }
+              InfoPair { label: "Tenant"; value: onedrive.driveTenantId; visible: onedrive.driveTenantId !== "" }
+              InfoPair { label: "Selector"; value: onedrive.driveSelector; visible: onedrive.driveSelector !== "" }
               InfoPair { label: "Backend"; value: onedrive.isDavfsBackend ? "WebDAV (davfs2)" : "rclone mount" }
               InfoPair { label: "Remote"; value: onedrive.remoteName; visible: !onedrive.isDavfsBackend }
               InfoPair { label: "Unit"; value: onedrive.isDavfsBackend ? onedrive.daemonServiceUnit : onedrive.serviceUnit }
@@ -880,7 +886,7 @@ Panel {
             Text {
               textFormat: Text.PlainText
               Layout.fillWidth: true
-              text: "OneDrive root"
+              text: onedrive.browserRootTitle() + " root"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -914,7 +920,7 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 2 } }
-              onClicked: onedrive.copyEntry("/", true, "OneDrive")
+              onClicked: onedrive.copyEntry("/", true, onedrive.browserRootTitle())
             }
 
             PanelActionButton {
@@ -924,7 +930,7 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 3 } }
-              onClicked: onedrive.copyEntry("/", true, "OneDrive", true)
+              onClicked: onedrive.copyEntry("/", true, onedrive.browserRootTitle(), true)
             }
           }
 

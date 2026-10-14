@@ -21,6 +21,8 @@
     "defaults": {
       "refreshIntervalSec": 30,
       "profileLabel": "",
+      "profilesFile": "",
+      "profileSetupCommand": "",
       "remoteName": "onedrive",
       "mountPoint": "~/OneDrive",
       "serviceUnit": "rclone-onedrive.service",
@@ -50,6 +52,20 @@
         "label": "Profile label",
         "defaultValue": "",
         "description": "Optional label shown in the panel for this OneDrive or Microsoft 365 library instance, e.g. \"Work\", \"Personal\", or \"Engineering docs\"."
+      },
+      {
+        "key": "profilesFile",
+        "type": "path",
+        "label": "Multi-account profile registry",
+        "defaultValue": "",
+        "description": "Optional version-1 registry produced by the native profiles.py setup tool. Enables unified browsing/search across enabled libraries; blank preserves single-library settings."
+      },
+      {
+        "key": "profileSetupCommand",
+        "type": "path",
+        "label": "Native library setup tool",
+        "defaultValue": "",
+        "description": "Path to the backend tools/profiles.py script. The library picker calls it with argument arrays, never shell-interpolated library names."
       },
       {
         "key": "remoteName",
@@ -98,7 +114,7 @@
         "type": "string",
         "label": "onedrive-davfs systemd unit",
         "defaultValue": "onedrive-davfs.service",
-        "description": "systemd --user unit running the onedrive-davfs daemon (wasmtime serve)."
+        "description": "systemd --user unit running the native Rust Wasmtime host for this library."
       },
       {
         "key": "mountServiceUnit",
@@ -112,7 +128,7 @@
         "type": "path",
         "label": "onedrive-davfs state directory",
         "defaultValue": "~/.local/state/onedrive-davfs",
-        "description": "Directory containing onedrive-davfs's token.json. Only its non-secret expiry timestamp is ever read."
+        "description": "Legacy state directory used only to check token-file presence. OAuth token contents are never opened; verified access/expiry come from the authenticated backend."
       },
       {
         "key": "envFile",

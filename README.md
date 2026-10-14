@@ -50,7 +50,9 @@ and is never shown in QML.
 
 ## Prerequisites
 
-This plugin is **observe-only**. It assumes the backend is already set up.
+This plugin assumes the backend and account login are already set up. Its
+optional library picker saves native configuration but does not install or
+start services.
 
 ### Backend: `rclone_mount` (default)
 
@@ -128,6 +130,50 @@ systemctl --user daemon-reload
 systemctl --user enable --now rclone-onedrive.service
 ```
 
+## Unified Microsoft 365 libraries
+
+Set `backend=wasm_davfs`, `profilesFile=~/.config/onedrive-davfs/profiles.json`,
+and `profileSetupCommand=~/.local/share/onedrive-davfs/tools/profiles.py`.
+Use the backend's multi-account installation guide to register accounts, sign
+in, bootstrap the first library and install its generated user units.
+Leave `profilesFile` blank to retain the existing single-library settings.
+
+The version-1 registry has `accounts` and `libraries` arrays. Native setup owns
+it; it contains profile IDs, labels, selectors, mount/state/env paths, loopback
+URLs and service names, **not OAuth tokens or WebDAV secrets**. Each library
+is associated with its account and generated account-specific reconnect
+command. The frontend never opens OAuth token files or calls Graph.
+
+All enabled libraries remain available as independent `/@<profile-id>` roots.
+Search requires two characters, returns at most 100 entries/library and 500
+overall, and preserves the source library label/path even for identical names.
+Ordering is stable; truncation and per-library failures are explicit. A failed
+library does not hide healthy results. At most 32 profiles are supported, with
+four concurrent authenticated local requests. Endpoints must be loopback HTTP
+roots with distinct ports and nonoverlapping mount/state directories.
+
+Select a profile to control/reconnect **only that library**. File actions resolve
+the original result's mountpoint, not the current control selection. In-flight
+responses are discarded after a binding/registry change, and a pending copy
+picker is canceled rather than transferring its source to a different profile.
+Copies never overwrite existing files or write into configured cloud mounts;
+mail uses `xdg-email --attach` to compose in the default client, never to send.
+
+**Add library** supports blank scope (the signed-in user's drives), `group:<id>`,
+`site:<id>`, or `siteUrl:https://tenant.sharepoint.com/sites/...`. Loading can be
+canceled. Private/shared Teams channels may require their explicit backing
+site; group discovery is not tenant-wide/channel-wide enumeration.
+**Save library** verifies through the existing account's authenticated backend
+and stages new configuration atomically. Install the generated fstab/secret
+snippets and user units manually before starting the new mount.
+
+Token-file presence is only a local setup hint. The panel reports backend
+**last-verified access**, reindexing and unavailable-library states separately.
+Admin consent, site permissions and conditional-access/device policies still
+apply; browser/PKCE is not a bypass. Commercial-cloud support is fixture-tested,
+not certified against an organizational account. Government/China clouds,
+cross-library MOVE, Office coauthoring and full offline sync are out of scope.
+
 ## Install locally
 
 Validate first:
@@ -167,6 +213,9 @@ The plugin exposes these configurable settings through Omarchy:
 - `mountServiceUnit`
 - `stateDir`
 - `reconnectCommand`
+- `envFile`
+- `profilesFile` (optional unified registry)
+- `profileSetupCommand` (optional native library setup script)
 
 ## Development
 
@@ -174,6 +223,8 @@ Useful checks while iterating:
 
 ```bash
 omarchy plugin validate .
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s . -p 'test_*.py'
+node test_model.cjs
 python3 status.py onedrive ~/OneDrive rclone-onedrive.service 127.0.0.1:5572 25
 python3 status_davfs.py ~/OneDrive onedrive-davfs.service onedrive-davfs-mount.service ~/.local/state/onedrive-davfs http://127.0.0.1:8765/
 python3 tree_davfs.py libraries ~/.config/onedrive-davfs/env http://127.0.0.1:8765/ siteUrl:https://tenant.sharepoint.com/sites/Engineering

@@ -2,12 +2,10 @@
 """Read-only status helper for the onedrive-davfs (Wasm WebDAV) backend.
 
 Mirrors status.py's contract and JSON shape so Model.js/Service.qml/Panel.qml
-can stay mostly backend-agnostic. This script never reads OAuth token
-contents -- only the non-secret `expires_at` timestamp from token.json -- and
-never sends credentials anywhere. Presence of `refresh_token` is treated as
-authenticated: the daemon refreshes a dormant access token on the next
-WebDAV request, so an idle `expires_at` in the past is not a reconnect
-failure. The reachability probe is a bare HTTP
+can stay mostly backend-agnostic. This script never opens OAuth token files.
+Token-file presence is only a local setup hint, not proof of access;
+verified access is reported separately by the authenticated backend API.
+The reachability probe is a bare HTTP
 request with no Authorization header; any response (even 401/403) counts as
 "reachable", only a connection failure/timeout counts as unreachable.
 """
@@ -52,23 +50,11 @@ def mount_is_ready(path_text):
 
 
 def read_token_expiry(state_dir):
-    """Returns (token_present, expires_at) reading only the non-secret
-    expiry timestamp; refresh_token/access_token values are never touched."""
+    """Legacy tuple shape; expiry metadata belongs to the backend, not this helper."""
+    if not state_dir:
+        return False, 0
     token_path = Path(os.path.expanduser(state_dir or "")) / "token.json"
-    if not token_path.exists():
-        return False, 0
-    try:
-        with open(token_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
-        return False, 0
-    if not isinstance(data, dict) or "refresh_token" not in data:
-        return False, 0
-    try:
-        expires_at = int(data.get("expires_at") or 0)
-    except (TypeError, ValueError):
-        expires_at = 0
-    return True, expires_at
+    return token_path.is_file(), 0
 
 
 def probe_daemon(url, timeout=1.5):
@@ -79,9 +65,11 @@ def probe_daemon(url, timeout=1.5):
         return False
     request = urllib.request.Request(url, method="GET")
     try:
-        urllib.request.urlopen(request, timeout=timeout)
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=timeout):
+            pass
         return True
-    except urllib.error.HTTPError:
+    except urllib.error.HTTPError as error:
+        error.close()
         # Server responded (even with an error status) -- still reachable.
         return True
     except (urllib.error.URLError, TimeoutError, OSError):
@@ -100,9 +88,7 @@ def build_status(mount_point, daemon_unit, mount_unit, state_dir, davfs_url):
     token_present, expires_at = read_token_expiry(state_dir)
     now = int(time.time())
     token_expires_in_sec = max(0, expires_at - now) if token_present and expires_at > 0 else 0
-    # Presence of refresh_token is enough: the daemon refreshes the short-lived
-    # access token on the next WebDAV request. An idle expired access token is
-    # not an auth failure and must not prompt reconnect.
+    # File presence is a setup hint. The plugin does not inspect credentials.
     authenticated = token_present
 
     daemon_reachable = probe_daemon(davfs_url) if daemon_running else False

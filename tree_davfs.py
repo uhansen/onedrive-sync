@@ -45,6 +45,9 @@ def join_url(base, path, query=None):
 
 
 def request_json(url, secret, timeout=8):
+    parsed_url = urllib.parse.urlsplit(url)
+    if parsed_url.scheme != "http" or parsed_url.hostname not in ("127.0.0.1", "localhost", "::1") or parsed_url.username or parsed_url.password:
+        return {"ok": False, "error": "Plugin requests require a loopback HTTP endpoint"}
     token = base64.b64encode(("daemon:" + secret).encode("utf-8")).decode("ascii")
     headers = {
         "Authorization": "Basic " + token,
@@ -53,16 +56,33 @@ def request_json(url, secret, timeout=8):
     }
     request = urllib.request.Request(url, method="GET", headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        with urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect).open(request, timeout=timeout) as response:
+            raw = response.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                return {"ok": False, "error": "Daemon response exceeded the size limit"}
+            body = raw.decode("utf-8", errors="replace")
             status = response.status
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        with exc:
+            body = exc.read(4096).decode("utf-8", errors="replace") if exc.fp else ""
+        message = "Daemon request failed"
+        text = body.lower()
+        for phrase, advice in (
+                ("conditional access", "Conditional access requires interactive sign-in or a compliant device"),
+                ("sign in again", "Sign in again; the account credential was not accepted"),
+                ("access denied", "Access denied; check library permissions, consent, and tenant policy"),
+                ("not found", "Library or item not found or inaccessible"),
+                ("onedrive_client_id", "Check the account's public-client application configuration")):
+            if phrase in text:
+                message = advice
+                break
         return {
             "ok": False,
-            "error": "HTTP %s" % exc.code,
+            "error": "HTTP %s: %s" % (exc.code, message),
             "status": exc.code,
-            "body": body[:400],
         }
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         return {"ok": False, "error": str(exc) or "unreachable"}
@@ -71,8 +91,9 @@ def request_json(url, secret, timeout=8):
     except ValueError:
         return {"ok": False, "error": "invalid JSON from daemon", "status": status}
     if isinstance(parsed, dict):
-        parsed.setdefault("ok", True)
-        return parsed
+        if isinstance(parsed.get("ok"), bool):
+            return parsed
+        return {"ok": False, "error": "Daemon response is missing its success/error status"}
     return {"ok": False, "error": "unexpected JSON shape"}
 
 

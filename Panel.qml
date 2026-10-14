@@ -24,6 +24,7 @@ Panel {
   property int phraseIndex: 0
   property bool treePanelOpen: false
   property bool statisticsExpanded: false
+  property bool libraryPickerExpanded: false
 
   readonly property var activePhrases: [
     "Mounting memories",
@@ -195,7 +196,7 @@ Panel {
   }
 
   function selectedBrowserEntry() {
-    if (browserFocus === "root") return { path: "/", name: onedrive.browserRootTitle(), isDir: true, root: true }
+    if (browserFocus === "root") return { path: onedrive.browserRootPath(), name: onedrive.browserRootTitle(), isDir: true, root: true }
     var rows = browserRows()
     if (rows.length === 0) return null
     var index = onedrive.searchQuery.length >= 2 ? searchIndex : treeIndex
@@ -786,7 +787,7 @@ Panel {
               InfoPair { label: "Unit"; value: onedrive.isDavfsBackend ? onedrive.daemonServiceUnit : onedrive.serviceUnit }
               InfoPair { label: "Service"; value: root.stateText(onedrive.running, "Running", (onedrive.serviceExists ? "Stopped" : "Missing")) }
               InfoPair { label: "Mounted"; value: root.stateText(onedrive.mounted, "Yes", "No") }
-              InfoPair { label: "Auth"; value: root.stateText(onedrive.authenticated, "Ready", "Required") }
+              InfoPair { label: "Auth"; value: onedrive.isDavfsBackend ? root.stateText(onedrive.accessVerified, "Last verified", "Not verified") : root.stateText(onedrive.authenticated, "Ready", "Required") }
               InfoPair { label: "RC"; value: root.stateText(onedrive.rcAvailable, "Reachable", "Unavailable"); visible: !onedrive.isDavfsBackend }
               InfoPair { label: "Daemon"; value: root.stateText(onedrive.daemonReachable, "Reachable", "Unavailable"); visible: onedrive.isDavfsBackend }
               InfoPair { label: "Token"; value: onedrive.authenticated ? tokenExpiryText() : "missing"; visible: onedrive.isDavfsBackend }
@@ -900,7 +901,7 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 0 } }
-              onClicked: onedrive.openTerminalAt("/")
+              onClicked: onedrive.openTerminalAt(onedrive.browserRootPath())
             }
 
             PanelActionButton {
@@ -910,7 +911,7 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 1 } }
-              onClicked: onedrive.openFolderAt("/")
+              onClicked: onedrive.openFolderAt(onedrive.browserRootPath())
             }
 
             PanelActionButton {
@@ -920,7 +921,7 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 2 } }
-              onClicked: onedrive.copyEntry("/", true, onedrive.browserRootTitle())
+              onClicked: onedrive.copyEntry(onedrive.browserRootPath(), true, onedrive.browserRootTitle())
             }
 
             PanelActionButton {
@@ -930,8 +931,78 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onHovered: function(on) { if (on) { root.browserFocus = "root"; root.browserActionIndex = 3 } }
-              onClicked: onedrive.copyEntry("/", true, onedrive.browserRootTitle(), true)
+              onClicked: onedrive.copyEntry(onedrive.browserRootPath(), true, onedrive.browserRootTitle(), true)
             }
+          }
+
+          RowLayout {
+            visible: onedrive.multiProfile
+            Layout.fillWidth: true
+            ComboBox {
+              Layout.fillWidth: true
+              model: onedrive.profileSources
+              textRole: "name"
+              valueRole: "id"
+              currentIndex: onedrive.profileSources.findIndex(function(profile) { return profile.id === onedrive.selectedProfileId })
+              onActivated: onedrive.selectedProfileId = currentValue
+            }
+            Button {
+              text: root.libraryPickerExpanded ? "Hide picker" : "Add library"
+              onClicked: root.libraryPickerExpanded = !root.libraryPickerExpanded
+            }
+          }
+
+          ColumnLayout {
+            visible: onedrive.multiProfile && root.libraryPickerExpanded
+            Layout.fillWidth: true
+            TextField {
+              id: libraryScope
+              Layout.fillWidth: true
+              placeholderText: "Optional group:<id>, site:<id>, or siteUrl:https://..."
+              foreground: root.foreground
+            }
+            RowLayout {
+              Layout.fillWidth: true
+              Button {
+                text: onedrive.discoveryLoading ? "Loading..." : "Discover"
+                enabled: !onedrive.discoveryLoading
+                onClicked: onedrive.discoverLibraries(libraryScope.text)
+              }
+              Button {
+                visible: onedrive.discoveryLoading
+                text: "Cancel"
+                onClicked: onedrive.cancelDiscovery()
+              }
+              ComboBox {
+                id: libraryChoices
+                Layout.fillWidth: true
+                model: onedrive.discoveredLibraries
+                textRole: "name"
+              }
+              Button {
+                text: "Save library"
+                enabled: libraryChoices.currentIndex >= 0 && !onedrive.discoveryLoading
+                onClicked: onedrive.addLibrary(onedrive.discoveredLibraries[libraryChoices.currentIndex])
+              }
+            }
+            Text {
+              Layout.fillWidth: true
+              text: onedrive.discoveryError
+              textFormat: Text.PlainText
+              color: root.urgent
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          Text {
+            visible: onedrive.multiProfile
+            Layout.fillWidth: true
+            text: onedrive.profileSources.map(function(profile) {
+              return profile.name + ": " + onedrive.libraryStatusText(profile.id)
+            }).join("\n")
+            textFormat: Text.PlainText
+            color: root.dim
+            wrapMode: Text.WordWrap
           }
 
           TextField {
@@ -968,6 +1039,7 @@ Panel {
             visible: onedrive.searchQuery.length >= 2 && onedrive.searchError !== ""
             Layout.fillWidth: true
             text: onedrive.searchError
+            textFormat: Text.PlainText
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -1516,7 +1588,8 @@ Panel {
         Text {
           textFormat: Text.PlainText
           Layout.fillWidth: true
-          text: resultRow.entry ? String(resultRow.entry.path || "") : ""
+          text: resultRow.entry ? (resultRow.entry.libraryLabel ? resultRow.entry.libraryLabel + " · " : "")
+            + String(resultRow.entry.sourcePath || resultRow.entry.path || "") : ""
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

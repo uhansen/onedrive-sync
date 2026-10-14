@@ -217,6 +217,10 @@ function parseSearchResults(raw) {
   var results = Array.isArray(parsed.results) ? parsed.results : []
   parsed.results = results.map(function (entry) {
     return {
+      profileId: String((entry && entry.profileId) || ""),
+      libraryLabel: String((entry && entry.libraryLabel) || ""),
+      sourcePath: String((entry && entry.sourcePath) || ""),
+      mountPoint: String((entry && entry.mountPoint) || ""),
       path: String((entry && entry.path) || ""),
       name: String((entry && entry.name) || ""),
       isDir: isFolderEntry(entry),

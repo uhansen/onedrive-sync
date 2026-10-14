@@ -8,12 +8,36 @@ Item {
   id: root
 
   property var settings: ({})
+  property string profilesFile: stringSetting("profilesFile", "")
+  property string profileSetupCommand: stringSetting("profileSetupCommand", "")
+  property var profileSources: []
+  property string selectedProfileId: ""
+  property var libraryStatuses: []
+  property string profileRevision: ""
+  property int requestEpoch: 0
+  property int treeSubmittedEpoch: 0
+  property int searchSubmittedEpoch: 0
+  property int indexSubmittedEpoch: 0
+  property string statusSubmittedProfile: ""
+  property int statusSubmittedEpoch: 0
+  property string controlSubmittedProfile: ""
+  property int controlSubmittedEpoch: 0
+  property string bindingFingerprint: ""
+  property var discoveredLibraries: []
+  property string discoveryScope: ""
+  property string discoveryError: ""
+  property int discoverySubmittedEpoch: 0
+  property string discoverySubmittedProfile: ""
+  readonly property bool multiProfile: isDavfsBackend && profilesFile !== ""
+  readonly property var selectedProfile: profileSources.find(function(profile) { return profile.id === root.selectedProfileId }) || null
+  readonly property bool discoveryLoading: discoveryProcess.running
 
   property bool installed: false
   property bool serviceExists: false
   property bool running: false
   property bool mounted: false
   property bool authenticated: false
+  property bool accessVerified: false
   property bool rcAvailable: false
 
   property int _desired: -1
@@ -22,18 +46,18 @@ Item {
   property string statusText: "Checking…"
   property string profileLabel: stringSetting("profileLabel", "")
   property string remoteName: stringSetting("remoteName", "onedrive")
-  property string mountPoint: stringSetting("mountPoint", "~/OneDrive")
+  property string mountPoint: profileSetting("mountPoint", "~/OneDrive")
   property string mountPointExpanded: expandHome(mountPoint)
   property string serviceUnit: stringSetting("serviceUnit", "rclone-onedrive.service")
   property string rcAddr: stringSetting("rcAddr", "127.0.0.1:5572")
   property string backend: stringSetting("backend", "rclone_mount")
   readonly property bool isDavfsBackend: backend === "wasm_davfs"
-  property string davfsUrl: stringSetting("davfsUrl", "http://127.0.0.1:8765/")
-  property string daemonServiceUnit: stringSetting("daemonServiceUnit", "onedrive-davfs.service")
-  property string mountServiceUnit: stringSetting("mountServiceUnit", "onedrive-davfs-mount.service")
-  property string stateDir: stringSetting("stateDir", "~/.local/state/onedrive-davfs")
-  property string reconnectCommand: stringSetting("reconnectCommand", "")
-  property string envFile: stringSetting("envFile", "~/.config/onedrive-davfs/env")
+  property string davfsUrl: profileSetting("url", "http://127.0.0.1:8765/")
+  property string daemonServiceUnit: profileSetting("daemonServiceUnit", "onedrive-davfs.service")
+  property string mountServiceUnit: profileSetting("mountServiceUnit", "onedrive-davfs-mount.service")
+  property string stateDir: profileSetting("stateDir", "~/.local/state/onedrive-davfs")
+  property string reconnectCommand: profileSetting("reconnectCommand", "")
+  property string envFile: profileSetting("envFile", "~/.config/onedrive-davfs/env")
   property double lastSyncTs: 0
   property var pendingFiles: []
   property int pendingCount: 0
@@ -58,6 +82,7 @@ Item {
   property var treeByPath: ({})
   property var treeExpanded: ({})
   property string treeError: ""
+  property string indexError: ""
   property string selectedTreePath: "/"
   property string searchQuery: ""
   property var searchResults: []
@@ -88,7 +113,9 @@ Item {
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("status.py")).replace(/^file:\/\//, ""))
   readonly property string helperPathDavfs: decodeURIComponent(String(Qt.resolvedUrl("status_davfs.py")).replace(/^file:\/\//, ""))
   readonly property string helperPathTree: decodeURIComponent(String(Qt.resolvedUrl("tree_davfs.py")).replace(/^file:\/\//, ""))
+  readonly property string helperPathProfiles: decodeURIComponent(String(Qt.resolvedUrl("profiles_davfs.py")).replace(/^file:\/\//, ""))
   readonly property string helperPathPickFolder: decodeURIComponent(String(Qt.resolvedUrl("pick_folder.py")).replace(/^file:\/\//, ""))
+  readonly property string helperPathCopy: decodeURIComponent(String(Qt.resolvedUrl("copy_entry.py")).replace(/^file:\/\//, ""))
 
   property string _statusOutput: ""
   property string _statusError: ""
@@ -107,6 +134,63 @@ Item {
 
   function stringSetting(name, fallback) {
     return String(setting(name, fallback) || fallback)
+  }
+
+  function profileSetting(name, fallback) {
+    if (multiProfile && selectedProfile && selectedProfile[name] !== undefined)
+      return String(selectedProfile[name])
+    if (multiProfile) return ""
+    return stringSetting(name === "url" ? "davfsUrl" : name, fallback)
+  }
+
+  function helperCommand(action, value) {
+    var argument = value === undefined || value === null ? (action === "libraries" ? "" : "/") : String(value)
+    return multiProfile
+      ? ["python3", helperPathProfiles, action, profilesFile, argument, selectedProfileId]
+      : ["python3", helperPathTree, action, envFile, davfsUrl, argument]
+  }
+
+  function clearBrowser() {
+    requestEpoch += 1
+    treeByPath = ({})
+    treeExpanded = ({})
+    searchResults = []
+    discoveredLibraries = []
+    treeError = ""
+    searchError = ""
+    discoveryError = ""
+    selectedTreePath = "/"
+    searchReady = false
+    searchTruncated = false
+    applyDriveMetadata({})
+    browserRefreshTimer.restart()
+  }
+
+  onSettingsChanged: {
+    clearBrowser()
+    profileSources = []
+    selectedProfileId = ""
+    profileRevision = ""
+    bindingFingerprint = ""
+    libraryStatuses = []
+    indexError = ""
+    lastError = ""
+    Qt.callLater(refresh)
+  }
+
+  onSelectedProfileIdChanged: {
+    mountPointExpanded = expandHome(mountPoint)
+    discoveredLibraries = []
+    _desired = -1
+    running = false
+    serviceExists = false
+    mounted = false
+    authenticated = false
+    accessVerified = false
+    statusText = "Checking selected library..."
+    var selectedStatus = libraryStatuses.find(function(item) { return item.profileId === root.selectedProfileId })
+    applyDriveMetadata(selectedStatus ? selectedStatus.status : {})
+    Qt.callLater(refresh)
   }
 
   function intSetting(name, fallback, min, max) {
@@ -130,8 +214,11 @@ Item {
     _statusOutput = ""
     _statusError = ""
     refreshing = true
+    statusSubmittedProfile = selectedProfileId
+    statusSubmittedEpoch = requestEpoch
     if (isDavfsBackend) {
-      statusProcess.command = ["python3", helperPathDavfs, mountPoint, daemonServiceUnit, mountServiceUnit, stateDir, davfsUrl]
+      var credentialDir = multiProfile && selectedProfile ? selectedProfile.credentialDir || stateDir : stateDir
+      statusProcess.command = ["python3", helperPathDavfs, mountPoint, daemonServiceUnit, mountServiceUnit, credentialDir, davfsUrl]
       fetchIndexStats()
     } else {
       statusProcess.command = ["python3", helperPath, remoteName, mountPoint, serviceUnit, rcAddr, "25"]
@@ -166,7 +253,7 @@ Item {
     mountServiceExists = parsed.mountServiceExists === true
     mountServiceRunning = parsed.mountServiceRunning === true
     daemonReachable = parsed.daemonReachable === true
-    tokenExpiresInSec = Number(parsed.tokenExpiresInSec || 0)
+    if (!isDavfsBackend) tokenExpiresInSec = Number(parsed.tokenExpiresInSec || 0)
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     statusText = String(parsed.statusText || (installed ? "Stopped" : "Not installed"))
     mountPointExpanded = String(parsed.mountPointExpanded || expandHome(mountPoint))
@@ -178,15 +265,20 @@ Item {
     transferredBytes = Number(parsed.transferredBytes || 0)
     errorCount = Number(parsed.errorCount || 0)
     errors = parsed.errors || []
-    applyDriveMetadata(parsed)
+    if (!isDavfsBackend || parsed.drive) applyDriveMetadata(parsed)
     if (errors.length > 0 && !lastError) lastError = String(errors[0])
-    else if (errors.length === 0) lastError = ""
+    else if (errors.length === 0) lastError = isDavfsBackend ? indexError : ""
   }
 
   function browserRootTitle() {
+    if (multiProfile && selectedProfile) return String(selectedProfile.name || selectedProfile.id)
     if (profileLabel !== "") return profileLabel
     if (driveName !== "") return driveName
     return "OneDrive"
+  }
+
+  function browserRootPath() {
+    return multiProfile && selectedProfile ? "/@" + selectedProfile.id : "/"
   }
 
   function applyDriveMetadata(parsed) {
@@ -232,6 +324,8 @@ Item {
     _desired = desired
     _controlOutput = ""
     _controlError = ""
+    controlSubmittedProfile = selectedProfileId
+    controlSubmittedEpoch = requestEpoch
     controlProcess.command = command
     controlProcess.running = true
   }
@@ -276,6 +370,7 @@ Item {
       actionStatusTimer.restart()
       return
     }
+    clearBrowser()
     // Runs the user-configured sign-in command (e.g. tools/device-code-login.sh)
     // in a floating terminal via Omarchy's own presentation helper -- the
     // same mechanism Omarchy's install-app flows use. The plugin never
@@ -293,7 +388,8 @@ Item {
 
   function fetchIndexStats() {
     if (!isDavfsBackend || indexStatsProcess.running) return
-    indexStatsProcess.command = ["python3", helperPathTree, "status", envFile, davfsUrl]
+    indexSubmittedEpoch = requestEpoch
+    indexStatsProcess.command = helperCommand("status", "/")
     indexStatsProcess.running = true
   }
 
@@ -302,7 +398,8 @@ Item {
     var target = String(path || "/")
     if (target.indexOf("..") !== -1) return
     treeError = ""
-    treeProcess.command = ["python3", helperPathTree, "tree", envFile, davfsUrl, target]
+    treeSubmittedEpoch = requestEpoch
+    treeProcess.command = helperCommand("tree", target)
     treeProcess.running = true
   }
 
@@ -325,8 +422,39 @@ Item {
   function applyIndexStats(raw) {
     var parsed = Model.parseIndexStatus(raw)
     if (!parsed.ok) {
-      treeError = parsed.error || parsed.lastError || ""
+      indexError = parsed.error || parsed.lastError || "Index status is unavailable"
+      treeError = indexError
+      accessVerified = false
+      lastError = indexError
+      if (multiProfile && profileSources.length > 0) {
+        clearBrowser()
+        profileSources = []
+        selectedProfileId = ""
+        profileRevision = ""
+        bindingFingerprint = ""
+        libraryStatuses = []
+        totalDirs = 0
+        totalFiles = 0
+        indexEnabled = false
+        crawlComplete = false
+        treeError = indexError
+      }
       return
+    }
+    var nextFingerprint = JSON.stringify(multiProfile ? parsed.libraryStatuses || [] : [parsed.drive, parsed.generation, parsed.present])
+    if (multiProfile) {
+      nextFingerprint = JSON.stringify((parsed.libraryStatuses || []).map(function(item) {
+        return [item.profileId, item.status.drive, item.status.generation, item.status.present]
+      }))
+    }
+    if ((profileRevision !== "" && parsed.profileRevision && parsed.profileRevision !== profileRevision)
+        || (bindingFingerprint !== "" && bindingFingerprint !== nextFingerprint)) clearBrowser()
+    bindingFingerprint = nextFingerprint
+    if (multiProfile) {
+      profileRevision = String(parsed.profileRevision || "")
+      profileSources = parsed.profiles || []
+      libraryStatuses = parsed.libraryStatuses || []
+      if (!selectedProfile) selectedProfileId = profileSources.length ? profileSources[0].id : ""
     }
     indexEnabled = parsed.indexEnabled === true
     crawlComplete = parsed.crawlComplete === true
@@ -336,7 +464,14 @@ Item {
     lastTickAt = Number(parsed.lastTickAt || 0)
     lastTickApplied = Number(parsed.lastTickApplied || 0)
     lastTickDurationMs = Number(parsed.lastTickDurationMs || 0)
-    applyDriveMetadata(parsed)
+    var selectedStatus = multiProfile ? libraryStatuses.find(function(item) { return item.profileId === root.selectedProfileId }) : null
+    applyDriveMetadata(selectedStatus ? selectedStatus.status : parsed)
+    var accessStatus = selectedStatus ? selectedStatus.status : parsed
+    indexError = String(accessStatus.error || accessStatus.lastSyncError || "")
+    lastError = indexError
+    accessVerified = accessStatus.accessVerified === true
+    tokenExpiresInSec = Number(accessStatus.tokenExpiresInSec || 0)
+    if (!multiProfile) treeError = String(accessStatus.lastSyncError || "")
     if (lastTickAt > 0) lastSyncTs = lastTickAt
   }
 
@@ -344,6 +479,11 @@ Item {
     var parsed = Model.parseTree(raw)
     if (!parsed.ok) {
       treeError = parsed.error || parsed.lastError || "Failed to list folder"
+      return
+    }
+    if (multiProfile && parsed.profileRevision !== profileRevision) {
+      clearBrowser()
+      fetchIndexStats()
       return
     }
     var next = Object.assign({}, treeByPath)
@@ -373,7 +513,8 @@ Item {
       return
     }
     searchSubmittedQuery = searchQuery
-    searchProcess.command = ["python3", helperPathTree, "search", envFile, davfsUrl, searchQuery]
+    searchSubmittedEpoch = requestEpoch
+    searchProcess.command = helperCommand("search", searchQuery)
     searchProcess.running = true
   }
 
@@ -384,16 +525,25 @@ Item {
       searchResults = []
       return
     }
-    searchError = ""
+    if (multiProfile && parsed.profileRevision !== profileRevision) {
+      clearBrowser()
+      fetchIndexStats()
+      return
+    }
+    searchError = parsed.partial ? (parsed.errors || []).map(function(error) { return error.label + ": " + error.error }).join("; ") : ""
     searchReady = parsed.ready !== false
     searchTruncated = parsed.truncated === true
     searchResults = parsed.results || []
   }
 
   function copyEntry(path, isDir, name, copyContents) {
-    if (pickFolderProcess.running) return
+    if (pickFolderProcess.running || copyProcess.running) return
+    var source = localPathFor(path)
+    if (!source) return
     pendingCopyEntry = {
       path: path,
+      source: source,
+      epoch: requestEpoch,
       isDir: isDir,
       name: name,
       copyContents: isDir && copyContents === true
@@ -429,7 +579,23 @@ Item {
   function localPathFor(relPath) {
     var base = String(mountPointExpanded || "").replace(/\/+$/, "")
     var rel = String(relPath || "/")
-    if (rel.indexOf("..") !== -1) return base
+    if (multiProfile) {
+      var match = rel.match(/^\/@([A-Za-z0-9_-]+)(\/.*)?$/)
+      var profile = match ? profileSources.find(function(item) { return item.id === match[1] }) : null
+      if (!profile) {
+        actionStatus = "Select an available library before using file actions"
+        actionStatusTimer.restart()
+        return ""
+      }
+      base = String(profile.mountPoint || "").replace(/\/+$/, "")
+      rel = match[2] || "/"
+    }
+    if (rel.split("/").some(function(segment) { return segment === "." || segment === ".." })
+        || /[\x00-\x1f\\]/.test(rel) || base === "") {
+      actionStatus = "Invalid library file path"
+      actionStatusTimer.restart()
+      return ""
+    }
     if (rel === "/" || rel === "") return base
     if (rel.charAt(0) !== "/") rel = "/" + rel
     return base + rel
@@ -439,6 +605,44 @@ Item {
     var abs = localPathFor(relPath)
     if (!abs) return
     Quickshell.execDetached(["uwsm-app", "--", "xdg-terminal-exec", "--dir=" + abs])
+  }
+
+  function discoverLibraries(scope) {
+    if (!isDavfsBackend || discoveryProcess.running) return
+    discoveryScope = String(scope || "")
+    discoveryError = ""
+    discoveredLibraries = []
+    discoverySubmittedEpoch = requestEpoch
+    discoverySubmittedProfile = selectedProfileId
+    discoveryProcess.command = helperCommand("libraries", discoveryScope)
+    discoveryProcess.running = true
+  }
+
+  function cancelDiscovery() {
+    discoverySubmittedEpoch = -1
+    discoveryProcess.running = false
+    discoveryError = "Library discovery canceled"
+  }
+
+  function libraryStatusText(profileId) {
+    var item = libraryStatuses.find(function(status) { return status.profileId === profileId })
+    if (!item) return "Checking"
+    var status = item.status || {}
+    if (!status.ok || status.error) return String(status.error || "Unavailable")
+    if (status.lastSyncError) return String(status.lastSyncError)
+    if (!status.present) return "Reindex required / not verified"
+    return status.crawlComplete ? "Indexed" : "Indexing"
+  }
+
+  function addLibrary(library) {
+    if (!multiProfile || !selectedProfile || !profileSetupCommand || profileSetupProcess.running) {
+      discoveryError = "Configure the native profile setup tool and an account profile first"
+      return
+    }
+    profileSetupProcess.command = ["python3", expandHome(profileSetupCommand), "--registry", expandHome(profilesFile),
+      "library", "--source", selectedProfile.id, "--selector", String(library.selector),
+      "--name", String(library.name || library.id)]
+    profileSetupProcess.running = true
   }
 
   function openFolder() {
@@ -564,6 +768,10 @@ Item {
       root.refreshing = false
       var stdout = String(statusStdout.text || root._statusOutput || "")
       var stderr = String(statusStderr.text || root._statusError || "")
+      if (root.statusSubmittedProfile !== root.selectedProfileId || root.statusSubmittedEpoch !== root.requestEpoch) {
+        Qt.callLater(root.refresh)
+        return
+      }
       if (exitCode === 0) root.applyStatus(stdout)
       else root.lastError = root.elideStatus(stderr || stdout || "Could not read OneDrive status")
     }
@@ -578,6 +786,11 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(controlStdout.text || root._controlOutput || "")
       var stderr = String(controlStderr.text || root._controlError || "")
+      if (root.controlSubmittedProfile !== root.selectedProfileId || root.controlSubmittedEpoch !== root.requestEpoch) {
+        root._desired = -1
+        Qt.callLater(root.refresh)
+        return
+      }
       if (exitCode !== 0) {
         root._desired = -1
         root.lastError = root.elideStatus(stderr || stdout || "Service command failed")
@@ -622,6 +835,10 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(indexStatsStdout.text || "")
       var stderr = String(indexStatsStderr.text || "")
+      if (root.indexSubmittedEpoch !== root.requestEpoch) {
+        Qt.callLater(root.fetchIndexStats)
+        return
+      }
       if (exitCode === 0) root.applyIndexStats(stdout)
       else root.treeError = root.elideStatus(stderr || stdout || "Could not read index status")
     }
@@ -636,6 +853,7 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(treeStdout.text || "")
       var stderr = String(treeStderr.text || "")
+      if (root.treeSubmittedEpoch !== root.requestEpoch) return
       if (exitCode === 0) root.applyTree(stdout)
       else root.treeError = root.elideStatus(stderr || stdout || "Could not list folder")
     }
@@ -652,7 +870,7 @@ Item {
       var stderr = String(searchStderr.text || "")
       var submittedQuery = root.searchSubmittedQuery
       root.searchSubmittedQuery = ""
-      if (submittedQuery !== root.searchQuery) {
+      if (submittedQuery !== root.searchQuery || root.searchSubmittedEpoch !== root.requestEpoch) {
         if (root.searchQuery.length >= 2) searchDebounce.restart()
         return
       }
@@ -675,13 +893,67 @@ Item {
       var entry = root.pendingCopyEntry
       root.pendingCopyEntry = null
       if (exitCode !== 0 || dest === "" || !entry) return
-      var src = root.localPathFor(entry.path)
+      if (entry.epoch !== root.requestEpoch) {
+        root.actionStatus = "Copy canceled: library configuration changed"
+        actionStatusTimer.restart()
+        return
+      }
+      var src = entry.source
       if (!src) return
-      var source = entry.copyContents ? root.shellQuote(src + "/.") : root.shellQuote(src)
-      var cmd = "mkdir -p -- " + root.shellQuote(dest) + " && cp -R -n -- " + source + " " + root.shellQuote(dest) + "/"
-      Quickshell.execDetached(["sh", "-c", cmd])
-      root.actionStatus = (entry.copyContents ? "Copied folder contents to " : "Copied to ") + dest
+      var command = ["python3", root.helperPathCopy, src, dest]
+      if (entry.copyContents) command.push("--contents")
+      var mounts = root.multiProfile ? root.profileSources.map(function(profile) { return profile.mountPoint }) : [root.mountPointExpanded]
+      mounts.forEach(function(mount) { command.push("--forbidden-root", mount) })
+      copyProcess.command = command
+      copyProcess.running = true
+      root.actionStatus = "Copying locally (existing files will be left untouched)..."
+    }
+  }
+
+  Process {
+    id: copyProcess
+    running: false
+    stderr: StdioCollector { id: copyStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      root.actionStatus = exitCode === 0 ? "Local copy finished; existing files were left untouched"
+        : root.elideStatus(copyStderr.text || "Local copy failed")
       actionStatusTimer.restart()
+    }
+  }
+
+  Process {
+    id: discoveryProcess
+    running: false
+    stdout: StdioCollector { id: discoveryStdout; waitForEnd: true }
+    stderr: StdioCollector { id: discoveryStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (root.discoverySubmittedEpoch !== root.requestEpoch || root.discoverySubmittedProfile !== root.selectedProfileId) return
+      var parsed = Model.parseStatus(discoveryStdout.text)
+      if (exitCode !== 0 || !parsed.ok) {
+        root.discoveryError = parsed.error || root.elideStatus(discoveryStderr.text) || "Library discovery failed"
+        return
+      }
+      root.discoveredLibraries = parsed.libraries || []
+      if (root.discoveredLibraries.length === 0)
+        root.discoveryError = "No accessible libraries were returned for this scope"
+    }
+  }
+
+  Process {
+    id: profileSetupProcess
+    running: false
+    stdout: StdioCollector { id: profileSetupStdout; waitForEnd: true }
+    stderr: StdioCollector { id: profileSetupStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      var parsed = Model.parseStatus(profileSetupStdout.text)
+      if (exitCode !== 0 || !parsed.ok) {
+        root.discoveryError = parsed.error || root.elideStatus(profileSetupStderr.text) || "Library setup failed"
+        return
+      }
+      root.actionStatus = "Library profile saved; install its generated units and mount configuration before starting it"
+      actionStatusTimer.restart()
+      root.clearBrowser()
+      root.fetchIndexStats()
     }
   }
 

@@ -1,0 +1,20 @@
+name: Frontend checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  helpers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test profile aggregation, transport and copy safety
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s . -p 'test_*.py'
+      - name: Test source-qualified UI models
+        run: node test_model.cjs
+      - name: Validate manifest JSON
+        run: python3 -m json.tool manifest.json > /dev/null

@@ -3,9 +3,9 @@
 `onedrive-sync` is an Omarchy shell plugin that adds a OneDrive status icon,
 details panel, and a few safe control actions to the bar.
 
-**New here? Read the [step-by-step setup book](SETUP.md)** for complete rclone
-and native-backend walkthroughs: personal and work/school OneDrive,
-SharePoint, Teams files, multiple accounts, and troubleshooting.
+**Configure your accounts with the [account setup guide](SETUP.md)**:
+install the plugin and either backend if needed, then sign in, select
+personal/work OneDrive or SharePoint/Teams libraries, and connect them.
 
 It is intentionally a **thin UI layer** over external daemons -- it supports
 two interchangeable backends, selected with the `backend` setting:

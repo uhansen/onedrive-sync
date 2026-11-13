@@ -24,19 +24,11 @@ Wasm component and Python helpers are shared across architectures; no local
 Wasm compilation is needed. 32-bit ARM and macOS are not supported by
 this installer.
 
-The installer checks the platform, verifies archives/files, and runs the
-staged native host's `--help` before installing. Checksums detect corruption;
-they do not replace trusting the repository that supplies archives/manifests.
+For installation, follow the
+[Bash installer instructions](../SETUP.md#2-install-the-backend-via-bash).
+Checksums detect corruption; they do not replace trusting the repository that
+supplies archives/manifests.
 
-Install with `python3 install_backend.py` from the repository root.
-It writes only bundled files under `~/.local`, not credentials, fstab or user
-service configuration. Re-running replaces these backend files, not account
-data. It does not restart an already running host. Service templates are
-installed under `~/.local/share/onedrive-davfs/systemd/` for reference, not
-activated automatically. Generated profile units use the default `~/.local`
-paths; a custom `--prefix` requires custom service configuration.
-
-Use `--build-from-source` to exercise the source path on Linux x86-64 too.
 CI includes a native Linux ARM64 build/install job; it runs after pushing the
 workflow. This checks the backend on ARM64, not Apple-specific kernel/drivers.
 

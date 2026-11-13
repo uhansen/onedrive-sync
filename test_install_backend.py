@@ -1,9 +1,11 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import platform
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -13,6 +15,32 @@ from install_backend import BUNDLE_DIR, build_host, check_platform, install, mai
 
 
 class BackendInstallerTests(unittest.TestCase):
+    def test_bash_entrypoint_forwards_arguments_and_failure_from_another_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plugin = root / "plugin checkout"
+            plugin.mkdir()
+            script = plugin / "install_backend.sh"
+            shutil.copyfile(Path(__file__).with_name("install_backend.sh"), script)
+            (plugin / "install_backend.py").write_text(
+                "import json, sys\nprint(json.dumps(sys.argv[1:]))\nraise SystemExit(17)\n")
+            args = ["--prefix", str(root / "custom prefix"), "--build-from-source"]
+            result = subprocess.run(["bash", str(script), *args], cwd=root,
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 17, result.stderr)
+            self.assertEqual(json.loads(result.stdout), args)
+
+    def test_bash_entrypoint_reports_missing_python(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(__file__).with_name("install_backend.sh").resolve()
+            result = subprocess.run(
+                [shutil.which("bash"), str(script)],
+                env=dict(os.environ, PATH=directory),
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("requires Python 3", result.stderr)
+            self.assertIn("omarchy pkg add python", result.stderr)
+
     def test_cli_rejects_non_omarchy_before_writing_files(self):
         with tempfile.TemporaryDirectory() as directory:
             prefix = Path(directory) / "not-installed"

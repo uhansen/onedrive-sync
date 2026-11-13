@@ -1,475 +1,215 @@
-# Configure your accounts for the plugin
+# Install the plugin, install the backend, configure accounts
 
-This guide assumes the plugin is installed. If you need the native backend,
-install `onedrive-davfs` below; otherwise skip to account configuration.
-Sign in, choose libraries, activate their mounts, and point the widget at them.
+Follow these steps in order on **Omarchy Linux**, as your normal user.
+Supported hardware is x86-64 or ARM64, including Apple Silicon already running
+Omarchy Linux, **not macOS**. These scripts do not install the operating system
+or hardware drivers.
 
-**Installing the plugin alone does not install a backend or configure an
-account.** The installation section covers only `onedrive-davfs`. The rclone
-account section is for readers who already have rclone installed.
+The setup uses `onedrive-davfs`, not rclone. It mounts files on demand; it is
+**not a full offline mirror** of your OneDrive.
 
-| What already works? | What to do next |
-| --- | --- |
-| Account signed in and folder mounted | Skip login/activation; apply the relevant widget settings and section 6 checks. |
-| Backend available, account not configured | Follow the appropriate account path below, including one-time activation. |
-| One native library works; you want more | Use unified profiles in section 4, then add libraries/accounts in section 5. |
-
-## Install onedrive-davfs (skip if already installed)
-
-This installer targets **Omarchy Linux only**, on x86-64 or ARM64 hardware.
-Apple Silicon is covered only when running Omarchy on a working ARM64 Linux
-installation, **not macOS**. Boot support, firmware/drivers and availability of
-Omarchy on your hardware are prerequisites, not installed by this script.
-Run commands in your normal user terminal, not a root shell.
-The installer requires `omarchy` on PATH and rejects macOS/non-Linux hosts.
-
-Install the runtime prerequisites (no Rust toolchain is needed):
+## 1. Install the Omarchy plugin
 
 ```bash
-omarchy pkg add python curl openssl xdg-utils davfs2
+omarchy plugin add https://github.com/uhansen/onedrive-sync.git --enable
 ```
 
-If a package is unavailable in your enabled repositories, check the current
-Arch package instructions before continuing.
+Review Omarchy's trust prompt and choose the widget's bar position.
+If the plugin is already installed, do not add another copy.
 
-The installed plugin includes an installer and matching backend artifacts.
-Run as your normal user, **without sudo**:
+## 2. Install the backend via Bash
+
+In your terminal, run **without sudo**:
 
 ```bash
-python3 "$HOME/.config/omarchy/plugins/onedrive-sync/install_backend.py"
-"$HOME/.local/bin/onedrive-davfs-host" --help
-python3 "$HOME/.local/share/onedrive-davfs/tools/profiles.py" --help
+SETUP="$HOME/.config/omarchy/plugins/onedrive-sync/setup.sh"
+bash "$SETUP" install
 ```
 
-From a source checkout, use `python3 install_backend.py` instead. If your
-installed plugin lacks the script/artifacts, update it first.
+This script installs/enables the plugin if missing, installs required packages
+through `omarchy pkg add`, and calls `install_backend.sh` to install the verified
+backend bundle into `~/.local`. Package installation may ask for your sudo
+password. ARM64 and older/non-glibc x86-64 systems also get native build tools;
+if Cargo is missing, the script installs Rust. Source builds download locked
+Cargo dependencies.
 
-The installer selects a host for the current machine:
+Existing plugin files and account configuration are not overwritten. If a
+backend service or sync timer is already running, installation stops before
+making changes: skip this step for a working installation. For upgrades, close
+open cloud files and stop the relevant mount, timer and daemon first.
+The installer does not sign in or start account services.
 
-| Platform | Requirements |
-| --- | --- |
-| Linux x86-64, glibc 2.38+ | Bundled executable; `libgcc_s` and `libm`. |
-| Linux ARM64 (`aarch64`/`arm64`) | Rust/cargo plus C/C++ tools and CMake; host is built from bundled source. |
-| Apple Silicon running Omarchy Linux | Same ARM64 source-build requirements; macOS is rejected. |
-| Linux x86-64 with older glibc or musl | Same source-build requirements as Linux ARM64. |
+From an existing source checkout, `bash ./setup.sh install` performs both
+installation steps. Keep the scripts, Python helpers and `artifacts/` together.
 
-On Arch, native build prerequisites can be installed with
-`omarchy pkg add base-devel cmake pkgconf`. Install Rust through
-[rustup](https://rustup.rs/) if needed. Source builds download locked Cargo
-dependencies and need sufficient memory and disk space. They reuse the bundled
-portable Wasm component; no Wasm toolchain is required. 32-bit ARM is not
-supported. All bundled code is from backend revision `7f3076a`.
-See [bundle details and rebuild instructions](artifacts/README.md).
+## 3. Configure your accounts and libraries
 
-The installer verifies checksums and runs the staged host before copying
-files into `~/.local`. It preserves account credentials, fstab and user service
-configuration; it does not log in, install packages, activate mounts, or
-restart processes. Re-running replaces bundled backend files. If upgrading a
-running backend, close open cloud files and coordinate stopping/restarting
-its services separately; do not assume the running process has been updated.
-The native host replaces `wasmtime serve`; do not run both on the same endpoint.
-For the plugin's optional copy-destination picker, system Python also needs
-`python-gobject` and a working desktop file-chooser portal.
+An **account** is a Microsoft login; a **library** is its own OneDrive or an
+accessible SharePoint/Teams document library. Each account gets separate
+credentials. Its libraries share that login, but have separate mounts and
+services. Nothing is copied between cloud accounts.
 
-**Next:** for a new native account, go to section 4, which generates its
-per-library configuration and service units. Section 3 is only for an
-already-configured single-library service/mount. To create that legacy layout
-instead, follow the
-[backend installation guide](https://github.com/uhansen/onedrive-davfs/blob/7f3076a/INSTALL.md)
-for its environment file, daemon/timer units and davfs mount. Do not start
-services before their credentials/configuration exist.
+### Have an approved application ID ready
 
-## 1. Choose what to connect
+Microsoft sign-in and organization approval cannot be automated away.
+Use an approved **public-client** app registration:
 
-An **account** is your Microsoft login. A **library** is one collection of files
-belonging to that account or accessible through it. One account can access
-several libraries.
+1. In the [Microsoft Entra portal](https://entra.microsoft.com/), create or
+   obtain an app registration supporting your intended account types.
+   Personal accounts require support for personal Microsoft accounts.
+2. Under Authentication, add a mobile/desktop platform and
+   `http://localhost/callback` for browser login. Enable public-client flows
+   for device-code login.
+3. Add delegated Microsoft Graph permissions `Files.ReadWrite.All`,
+   `User.Read` and `offline_access`. Site discovery additionally uses
+   `Sites.Read.All`; request it only when needed and approved.
+4. Copy the application/client ID. For work accounts, obtain the correct
+   tenant ID. Do not create or supply a client secret.
 
-| Your files | What to select |
-| --- | --- |
-| Personal OneDrive | Your personal account's OneDrive. |
-| Work/school OneDrive | Your work account's own OneDrive, not the team's documents. |
-| SharePoint | The specific site's document library; a site can have several. |
-| Teams standard channel | The parent team's SharePoint library, then the channel folder. |
-| Teams private/shared channel | The channel's own SharePoint site and library. |
+Your administrator may need to grant consent or approve the device. Setup
+cannot bypass tenant policy, MFA, licensing, or library membership.
 
-For Teams, use **Open in SharePoint** from the channel's files/shared tab to
-find the backing site. A sharing link is not a library ID. Chat attachments
-are not automatically a separate Teams library.
+The following examples use the `SETUP` variable from step 2. Replace
+`YOUR_CLIENT_ID`, `YOUR_TENANT_ID` and example site URLs before running them.
 
-Choose the section for your installed backend:
-
-- **[rclone](#2-rclone-accounts):** a remote and widget per account/library.
-- **[Native, single library](#3-native-existing-single-library):** keep an
-  existing simple mount.
-- **[Native, unified libraries](#4-native-unified-accounts-and-libraries):**
-  one widget for several accounts/libraries, with indexed browsing/search.
-
-Examples use Bash. Replace `YOUR_CLIENT_ID`, `YOUR_TENANT_ID`, and
-`YOUR_DRIVE_ID` with your own values. Do not copy tokens or secrets into
-support messages. Work/school accounts may require administrator approval;
-none of these steps bypasses permissions or device policies.
-
-The `omarchy bar set` examples assume **one** OneDrive widget. If you have
-several, edit the intended object in `~/.config/omarchy/shell.json`, or use
-the instance placement selectors described by `omarchy bar --help`.
-Settings go directly on the widget object, not inside a `"settings"` wrapper.
-
-## 2. rclone accounts
-
-### Sign in and choose a library
-
-1. Run `rclone config`.
-2. Choose **New remote**, give it a name such as `personal` or `work`, and
-   choose storage type **Microsoft OneDrive** (`onedrive`).
-3. Use rclone's default client registration unless your organization requires
-   its own. Complete browser sign-in with the intended Microsoft account.
-4. Choose **OneDrive Personal or Business** for your own drive. For SharePoint
-   or Teams files, choose the backing SharePoint site/library or its known
-   site/drive ID. Select by menu labels, not fixed menu numbers.
-5. Save the remote and check it:
+### Personal OneDrive
 
 ```bash
-rclone lsd personal:
+bash "$SETUP" account \
+  --account personal --library personal --name "Personal OneDrive" \
+  --client-id YOUR_CLIENT_ID --tenant consumers
 ```
 
-Replace `personal` with the remote you created. Compare the folders with the
-same library in your browser. Fix login or access errors before configuring
-the plugin.
+Sign in with the intended personal Microsoft account. The default library
+selector is `me/drive`: that account's own OneDrive.
 
-For organization-specific registration, consent, and tenant settings, follow
-[rclone's OneDrive account instructions](https://rclone.org/onedrive/).
-Do not use the native backend's public-client registration recipe for rclone.
-
-### Activate and select it in the plugin
-
-Your rclone user service must mount that remote and enable RC on its configured
-loopback address. If you need a service template, see
-[the README example](README.md#example-systemd-user-unit).
-Adjust its remote, mountpoint, service name and RC port consistently.
-Create an empty mount directory before starting the service.
-
-For example, with remote `personal`, mount `~/OneDrive-Personal`, and an
-already configured `rclone-personal.service`:
+### Microsoft 365 work/school OneDrive
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user enable --now rclone-personal.service
-findmnt --mountpoint "$HOME/OneDrive-Personal"
-ls "$HOME/OneDrive-Personal"
-
-omarchy bar set onedrive-sync backend rclone_mount
-omarchy bar set onedrive-sync profileLabel Personal
-omarchy bar set onedrive-sync remoteName personal
-omarchy bar set onedrive-sync mountPoint "$HOME/OneDrive-Personal"
-omarchy bar set onedrive-sync serviceUnit rclone-personal.service
-omarchy bar set onedrive-sync rcAddr 127.0.0.1:5572
+bash "$SETUP" account \
+  --account work --library workdocs --name "Work OneDrive" \
+  --client-id YOUR_CLIENT_ID --tenant YOUR_TENANT_ID --sites
 ```
 
-**For another account/library**, repeat with a separate remote, mount, service,
-RC port, and widget instance:
+Sign in with the intended work/school account. `--sites` requests the optional
+site-discovery permission for later SharePoint/Teams setup. Omit it if you do
+not need that permission or it is not approved.
 
-| Remote | Mount | Service | RC address |
-| --- | --- | --- | --- |
-| `personal` | `~/OneDrive-Personal` | `rclone-personal.service` | `127.0.0.1:5572` |
-| `work` | `~/OneDrive-Work` | `rclone-work.service` | `127.0.0.1:5573` |
-| `engineering` | `~/SharePoint-Engineering` | `rclone-engineering.service` | `127.0.0.1:5574` |
+### SharePoint
 
-The plugin expects the normal `~/.config/rclone/rclone.conf` and does not
-supply RC authentication credentials. Keep RC loopback-only; do not disable
-authentication protections to make controls work. On untrusted multi-user
-machines, consider [RC's security implications](https://rclone.org/rc/#security).
-The native unified library picker is not available in rclone mode.
-
-## 3. Native: existing single library
-
-Use this section when an existing native service and mount already point at
-the library you want. To add isolated accounts/libraries, use section 4 instead.
-
-### Check the account configuration and sign in
-
-Privately edit your existing `~/.config/onedrive-davfs/env`:
-
-```dotenv
-ONEDRIVE_CLIENT_ID="YOUR_CLIENT_ID"
-ONEDRIVE_TENANT_ID="common"
-ONEDRIVE_SCOPES="offline_access Files.ReadWrite.All User.Read"
-ONEDRIVE_DRIVE_BASE="me/drive"
-ONEDRIVE_BASIC_AUTH_SECRET="KEEP_YOUR_EXISTING_LOCAL_SECRET"
-```
-
-Use your work tenant ID for a work account; personal accounts can use
-`consumers` or a deliberately chosen `common` authority. `me/drive` selects
-your own OneDrive; `drives/YOUR_DRIVE_ID` selects a known accessible library.
-Keep the existing local WebDAV secret matching davfs credentials, and keep
-the file mode `600`. Do not repurpose a live mount across different accounts.
-
-The native backend needs an approved **public-client** app registration:
-delegated `Files.ReadWrite.All`, `User.Read`, `offline_access`, and optionally
-`Sites.Read.All` for site discovery. Browser login uses a registered
-`http://localhost/callback` redirect with PKCE; no client secret is needed.
-See the linked backend guide for registration details.
-
-In a dedicated terminal, source only your trusted private file and sign in:
+For the already registered `work` account:
 
 ```bash
-set -a
-. "$HOME/.config/onedrive-davfs/env"
-set +a
-ONEDRIVE_STATE_DIR="$HOME/.local/state/onedrive-davfs" \
-  python3 "$HOME/.local/share/onedrive-davfs/tools/browser-login.py"
+bash "$SETUP" account \
+  --account work --library engineering --name "Engineering documents" \
+  --site-url https://example.sharepoint.com/sites/Engineering
 ```
 
-For device-code login, use the same environment and state directory but run
-`bash ~/.local/share/onedrive-davfs/tools/device-code-login.sh` instead.
-Close the terminal afterward. Do not print the token file.
+Use the **site root**, not a sharing link or `Forms/AllItems.aspx` URL.
+The script lists that site's accessible document libraries and asks you to
+choose one. It does not choose the first result automatically.
 
-### Activate and connect the existing mount
+If this is the account's first library, also supply `--client-id` and
+`--tenant`; a primary OneDrive is not required.
 
-Close files before restarting services. These commands assume the existing
-mount/fstab/credentials are already configured:
+For a known drive ID, use `--selector drives/YOUR_DRIVE_ID` instead of
+`--site-url`. This avoids site discovery and does not request `Sites.Read.All`.
+An existing account's consent/scopes are never silently broadened.
+
+### Teams
+
+In Teams, open the channel's files/shared tab and choose **Open in SharePoint**.
+Use the backing site's root URL:
 
 ```bash
-systemctl --user restart onedrive-davfs.service
-systemctl --user enable --now onedrive-davfs-sync.timer
-systemctl --user start onedrive-davfs-sync.service
-systemctl --user start onedrive-davfs-mount.service
-
-omarchy bar set onedrive-sync backend wasm_davfs
-omarchy bar set onedrive-sync profilesFile ''
-omarchy bar set onedrive-sync mountPoint "$HOME/OneDrive"
-omarchy bar set onedrive-sync davfsUrl http://127.0.0.1:8765/
-omarchy bar set onedrive-sync daemonServiceUnit onedrive-davfs.service
-omarchy bar set onedrive-sync mountServiceUnit onedrive-davfs-mount.service
-omarchy bar set onedrive-sync stateDir "$HOME/.local/state/onedrive-davfs"
-omarchy bar set onedrive-sync envFile "$HOME/.config/onedrive-davfs/env"
-omarchy bar set onedrive-sync reconnectCommand \
-  'set -a; . "$HOME/.config/onedrive-davfs/env" && set +a && ONEDRIVE_STATE_DIR="$HOME/.local/state/onedrive-davfs" python3 "$HOME/.local/share/onedrive-davfs/tools/browser-login.py"'
+bash "$SETUP" account \
+  --account work --library teamdocs --name "Team documents" \
+  --site-url https://example.sharepoint.com/sites/YourTeam
 ```
 
-Substitute your actual service names and paths. **Add library is hidden** while
-`profilesFile` is blank; that is expected in single-library mode.
+Standard channels usually share the parent team's document library; the
+channel folder is inside it. Private/shared channels have their **own backing
+site**: use that channel's site, not the parent team's. Chat attachments are
+not automatically a separate Teams library.
 
-## 4. Native: unified accounts and libraries
+For a known Microsoft 365 group, `--group-id YOUR_GROUP_ID` can replace
+`--site-url`. Discovery only covers the specified site/group, not every site
+in the tenant.
 
-Each account gets an isolated login; its libraries share that login but have
-separate mounts and services. The first library requires a temporary
-**bootstrap host** so the setup tool can verify access before saving it.
+### What the account script automates
 
-### Register and sign in to an account
+It registers a new account or reuses its existing matching configuration,
+launches Microsoft's login helper if credentials are absent, starts and
+cleans up a temporary loopback bootstrap host, verifies access, and generates
+the library's private configuration. No manual bootstrap environment files,
+secrets or port selection are needed.
 
-Example work account named `work`:
+It then asks you to type **yes** before activation. Activation:
+
+- Backs up `/etc/fstab` before appending the generated user-mount entry.
+- Merges the generated WebDAV secret into `~/.davfs2/secrets` with mode `600`.
+- Installs and enables the generated user daemon, sync timer and mount units.
+- Waits for the backend, verifies cloud access and reads the mounted directory.
+- Configures the OneDrive widget's unified library selector.
+
+Existing fstab entries, credentials and customized units are preserved.
+Conflicting entries or nonempty mountpoints cause an explicit error, not an
+overwrite. `sudo` is used only for the fstab backup/append and, if necessary,
+adding your user to davfs2's configured mount group. If group membership was
+added, **log out and back in**, then resume activation below.
+
+The mount is `~/OneDrive-Libraries/LIBRARY_ID`. Libraries appear in
+`~/.config/onedrive-davfs/profiles.json`; private per-library files are under
+`~/.config/onedrive-davfs/library-data/LIBRARY_ID/`.
+
+**Existing single-library/rclone users:** activation switches the widget to
+native unified profiles. It does not migrate or stop existing mounts or import
+their credentials. Review that confirmation before accepting. These examples
+assume one OneDrive widget; multiple widget instances need explicit manual
+placement/settings.
+
+### Resume, add accounts, or use device-code sign-in
+
+If activation was cancelled or failed after saving a profile:
 
 ```bash
-python3 ~/.local/share/onedrive-davfs/tools/profiles.py account \
-  --id work --client-id YOUR_CLIENT_ID --tenant YOUR_TENANT_ID \
-  --scopes 'offline_access Files.ReadWrite.All User.Read Sites.Read.All'
-
-ONEDRIVE_ACCOUNT_DIR="$HOME/.config/onedrive-davfs/account-data/work" \
-ONEDRIVE_CLIENT_ID="YOUR_CLIENT_ID" \
-ONEDRIVE_TENANT_ID="YOUR_TENANT_ID" \
-ONEDRIVE_SCOPES="offline_access Files.ReadWrite.All User.Read Sites.Read.All" \
-python3 ~/.local/share/onedrive-davfs/tools/browser-login.py
+bash "$SETUP" activate --library workdocs
 ```
 
-Run account registration once per account ID. For personal OneDrive, choose
-an ID such as `personal` and authority `consumers` (or deliberately `common`).
-Use a compatible app registration as described in section 3.
-Omit `Sites.Read.All` everywhere if it is not needed/approved. Client, tenant
-and scopes must match throughout the account's registration, login and backend.
+Activation is repeatable without duplicating matching fstab/secret entries.
+Do not register the same library ID again. To add another library for the same
+account, reuse `--account work` with a **new** `--library` ID.
+For another Microsoft login, choose a **new account ID** and provide its own
+client/tenant settings; existing account credentials are never replaced.
 
-### Bootstrap the first library
-
-Create a new private `~/.config/onedrive-davfs/work-bootstrap.env` using your
-editor; do not overwrite an existing file:
-
-```dotenv
-ONEDRIVE_CLIENT_ID="YOUR_CLIENT_ID"
-ONEDRIVE_TENANT_ID="YOUR_TENANT_ID"
-ONEDRIVE_SCOPES="offline_access Files.ReadWrite.All User.Read Sites.Read.All"
-ONEDRIVE_DRIVE_BASE="me/drive"
-ONEDRIVE_BASIC_AUTH_SECRET="YOUR_NEW_RANDOM_LOCAL_SECRET"
-```
-
-Generate the secret with `openssl rand -base64 32` and make the file private:
+Add `--login device` to an account command if browser sign-in is unavailable.
+Complete the Microsoft verification code yourself. Use `--no-activate` to
+generate configuration without changing fstab, services or widget settings.
+For all options:
 
 ```bash
-chmod 600 ~/.config/onedrive-davfs/work-bootstrap.env
-ss -ltn 'sport = :8790'
+bash "$SETUP" account --help
 ```
 
-Port 8790 must be unused. If occupied, choose another port consistently.
-In a dedicated terminal:
+## 4. Verify
+
+For the personal example:
 
 ```bash
-mkdir -p ~/.local/state/onedrive-davfs/bootstrap-work
-set -a
-. "$HOME/.config/onedrive-davfs/work-bootstrap.env"
-set +a
-"$HOME/.local/bin/onedrive-davfs-host" --addr 127.0.0.1:8790 \
-  --state-dir "$HOME/.local/state/onedrive-davfs/bootstrap-work" \
-  --account-dir "$HOME/.config/onedrive-davfs/account-data/work" \
-  --component "$HOME/.local/share/onedrive-davfs/onedrive_davfs.wasm"
+findmnt --mountpoint "$HOME/OneDrive-Libraries/personal"
+ls "$HOME/OneDrive-Libraries/personal"
+python3 "$HOME/.config/omarchy/plugins/onedrive-sync/profiles_davfs.py" status \
+  "$HOME/.config/onedrive-davfs/profiles.json"
 ```
 
-Leave it running; do not mount this temporary endpoint. In another terminal,
-verify and save the first library:
+Compare a known folder with the same account/library in your browser. For
+Teams, use the location reached through **Open in SharePoint**.
+The authenticated status should report `accessVerified` with no sync error.
+The timer updates metadata about every 30 seconds; initial indexing takes
+longer. Search needs two characters and a sufficiently populated index.
+File downloads happen on demand; uploads normally start after closing a file.
 
-```bash
-python3 ~/.local/share/onedrive-davfs/tools/profiles.py library \
-  --account work --source-url http://127.0.0.1:8790/ \
-  --source-env ~/.config/onedrive-davfs/work-bootstrap.env \
-  --selector me/drive --name "Work OneDrive" --id workdocs
-```
-
-For a known SharePoint library, substitute `drives/YOUR_DRIVE_ID`. If the
-account has no primary OneDrive, also use that selector in the bootstrap env.
-For discovering IDs, see section 5.
-Do **not** pre-create `~/OneDrive-Libraries/workdocs`: the setup tool requires
-a new mountpoint. It generates a profile in `profiles.json` and files under
-`~/.config/onedrive-davfs/library-data/workdocs/`.
-
-### One-time activation of the generated library
-
-**Save library does not start a working mount.** For `workdocs`:
-
-These are per-library account configuration steps, not software installation.
-Skip them if that exact profile is already activated and its mount works.
-
-1. Review its generated `fstab.entry` and add it **once** using
-   `sudoedit /etc/fstab`. Preserve all existing entries.
-2. Merge its `davfs-secrets.entry` into your private `~/.davfs2/secrets`
-   **once**, preserving other credentials; keep mode `600`. Never share this
-   file or the generated secret snippet.
-3. Create the generated mountpoint and activate its units:
-
-```bash
-PROFILE="$HOME/.config/onedrive-davfs/library-data/workdocs"
-mkdir -p "$HOME/OneDrive-Libraries/workdocs" "$HOME/.config/systemd/user"
-install -m 644 "$PROFILE/onedrive-davfs-workdocs.service" \
-  "$PROFILE/onedrive-davfs-workdocs-mount.service" \
-  "$PROFILE/onedrive-davfs-workdocs-sync.service" \
-  "$PROFILE/onedrive-davfs-workdocs-sync.timer" "$HOME/.config/systemd/user/"
-systemctl --user daemon-reload
-systemctl --user enable --now onedrive-davfs-workdocs.service
-systemctl --user enable --now onedrive-davfs-workdocs-sync.timer
-systemctl --user start onedrive-davfs-workdocs-sync.service
-systemctl --user enable --now onedrive-davfs-workdocs-mount.service
-findmnt --mountpoint "$HOME/OneDrive-Libraries/workdocs"
-ls "$HOME/OneDrive-Libraries/workdocs"
-```
-
-Use the exact generated mountpoint if you chose a custom one. If the mount
-fails, check daemon readiness, davfs user-mount permissions and the generated
-fstab entry; do not add conflicting `mount.davfs -o` options.
-Once the real library works, stop the bootstrap host with **Ctrl+C in its
-terminal**. Do not delete the account credential directory.
-
-### Enable the unified widget
-
-```bash
-omarchy bar set onedrive-sync backend wasm_davfs
-omarchy bar set onedrive-sync profilesFile "$HOME/.config/onedrive-davfs/profiles.json"
-omarchy bar set onedrive-sync profileSetupCommand "$HOME/.local/share/onedrive-davfs/tools/profiles.py"
-omarchy-shell shell rescanPlugins
-```
-
-Open **Browse folders**: the library selector and **Add library** should now
-appear. Installing the plugin/backend does not set these options automatically.
-
-## 5. Add SharePoint, Teams, or another account
-
-### Choose the library
-
-For native unified mode, select an existing working library belonging to the
-right account, then **Add library -> Discover**:
-
-| Discovery scope | What it lists |
-| --- | --- |
-| Blank | The signed-in user's drives, not all sites in the tenant. |
-| `group:YOUR_GROUP_ID` | A particular Microsoft 365 group's drives. |
-| `site:YOUR_SITE_ID` | A particular site's libraries. |
-| `siteUrl:https://example.sharepoint.com/sites/Engineering` | Libraries of that specific SharePoint site. |
-
-Use the site root, not a sharing link or `Forms/AllItems.aspx` URL. For private
-or shared Teams channels, use **that channel's own site**, not just the parent
-team's group. You still need membership and approved permissions.
-
-Before the first profile exists, discover through the running bootstrap host:
-
-```bash
-python3 ~/.config/omarchy/plugins/onedrive-sync/tree_davfs.py libraries \
-  ~/.config/onedrive-davfs/work-bootstrap.env http://127.0.0.1:8790/ \
-  siteUrl:https://example.sharepoint.com/sites/Engineering
-```
-
-Use the intended result's `drives/ID` selector in the first-library command.
-
-### Save and activate an additional library
-
-Choose the discovered library and **Save library**. Inspect `profiles.json`
-for its generated ID, then repeat section 4's activation steps using that ID
-and its exact generated paths. The display name is not necessarily the ID.
-
-Or, for a known library belonging to the **same account**:
-
-```bash
-python3 ~/.local/share/onedrive-davfs/tools/profiles.py library \
-  --source workdocs --selector drives/YOUR_DRIVE_ID \
-  --name "Engineering documents" --id engineering
-```
-
-Activate `engineering` as above. Do not register another account just to add
-one of its libraries.
-
-For a **different account**, repeat section 4 with a new account ID, isolated
-login, bootstrap directory/env file and unused port. Do not bootstrap it
-through another account's library or copy tokens between directories.
-Generated reconnect commands already target the owning account.
-
-For **rclone**, use section 2 instead: create another remote for the backing
-site/library and its own mount/service/widget. Native profile commands do not
-configure rclone accounts.
-
-## 6. Check your configuration
-
-1. Compare a known folder with the same account/library in your browser.
-   For Teams, compare the location reached by **Open in SharePoint**.
-2. Confirm `findmnt` and an actual `ls` work on the intended mount.
-3. Open it from the correct widget. In native unified mode, confirm each
-   library has its own source path and the selector is visible.
-4. Allow the native metadata index to progress before judging search results.
-   Search needs two characters. Indexing names does not download all files.
-
-Native unified status:
-
-```bash
-python3 ~/.config/omarchy/plugins/onedrive-sync/profiles_davfs.py status \
-  ~/.config/onedrive-davfs/profiles.json
-```
-
-For the existing single-library example:
-
-```bash
-python3 ~/.config/omarchy/plugins/onedrive-sync/tree_davfs.py status \
-  ~/.config/onedrive-davfs/env http://127.0.0.1:8765/
-```
-
-Look for successful responses and backend `accessVerified` after a successful
-metadata tick. Token-file presence and a running service alone do not prove
-current cloud access. Status responses can contain private paths/names;
-redact them before sharing.
-
-| Problem | Check |
-| --- | --- |
-| Wrong files | Actual login identity and selected drive/library, not just its display label. |
-| Needs admin approval / access denied | App registration, delegated scopes, tenant policy and library membership. |
-| No library selector / Add library | Native mode, nonblank `profilesFile`, registry with activated profiles. Never available for rclone. |
-| Library saved but mount missing | Generated fstab/secret entries and service activation are still required. |
-| Bootstrap identity mismatch | Matching account directory, client ID, tenant and scopes throughout. |
-| Local HTTP 401 | Local WebDAV secret must match; this is separate from Microsoft login. |
-| Search misses files | Index progress and per-library errors; results are capped. |
-| Old UI after changing configuration | Validate the installed plugin; if rescan is insufficient, run `omarchy restart shell`. |
-
-These are real cloud mounts, not backups. Read-only checks are sufficient to
-verify configuration; do not delete or overwrite documents as a setup test.
+If setup fails, read its explicit error, fix consent/permissions or the
+reported local conflict, and rerun `activate` for the saved library. Do not
+delete credential directories or upload historical `lost+found` files
+blindly. Never share token files, WebDAV secrets or unredacted status output.

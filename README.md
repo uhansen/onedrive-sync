@@ -4,16 +4,13 @@
 details panel, and a few safe control actions to the bar.
 
 **Configure your accounts with the [account setup guide](SETUP.md)**:
-after installing the plugin, install `onedrive-davfs` if needed, then sign in
-and connect personal/work OneDrive or SharePoint/Teams libraries. Account
-configuration for existing rclone installations is also covered.
+install the Omarchy plugin, install `onedrive-davfs` through the Bash setup
+script, then connect personal/work OneDrive or SharePoint/Teams libraries.
+The scripts automate local setup while keeping Microsoft sign-in, consent
+and library selection explicit.
 
-To install the native backend, run `python3 install_backend.py` from this
-checkout, without sudo. Linux x86-64 (glibc 2.38+) uses the bundled executable;
-ARM64 builds the host from bundled source with Rust and native build tools,
-including on Apple Silicon running Omarchy Linux. macOS is not supported.
-Matching component/helpers go to `~/.local` without configuring accounts or
-starting services. See [SETUP.md](SETUP.md) for requirements and next steps.
+For backend installation, follow the
+[Bash installer instructions](SETUP.md#2-install-the-backend-via-bash).
 
 It is intentionally a **thin UI layer** over external daemons -- it supports
 two interchangeable backends, selected with the `backend` setting:
@@ -79,10 +76,8 @@ The in-plugin **Reconnect** button is for re-authorization, not first-time setup
 
 ### Backend: `wasm_davfs`
 
-1. Build and run [`onedrive-davfs`](https://github.com/uhansen/onedrive-davfs)
-   per its own README -- registering an Azure AD app, running its
-   `tools/device-code-login.sh` once, and enabling its systemd units
-   (`onedrive-davfs.service` and, optionally, `onedrive-davfs-mount.service`)
+1. Install `onedrive-davfs` and configure its account and services using
+   [SETUP.md](SETUP.md).
 2. Mount the daemon's WebDAV endpoint at your chosen mount point with `davfs2`
    via either:
    - an `/etc/fstab` entry, or

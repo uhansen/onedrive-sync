@@ -2,10 +2,23 @@
   "format": 1,
   "platform": "source",
   "source": "https://github.com/uhansen/onedrive-davfs",
-  "revision": "7f3076a0f6405cc821369cc2082390a196ceb2d1",
+  "revision": "3bcf6382ecdc9c4bd8be7f971a772fa31dd03cb3",
   "license": "MIT",
-  "sha256": "522f7afac1c633ef93a510fff4eaf7d99ce71fb9dbacd6ce3a1b5a8096f44ed2",
+  "base_revision": "3bcf6382ecdc9c4bd8be7f971a772fa31dd03cb3",
+  "source_dirty": false,
+  "source_tree_sha256": "4a4d7b9e3ee7124b0c21b1cac7c343a12b58a033bab0008bbbc9debbfab3c179",
+  "sha256": "95a70a8227edd734269dceefcfcaa062ce7bf0886ee304d82f1c6192838a06ee",
   "files": {
+    "source/Cargo.lock": {
+      "size": 3114,
+      "sha256": "f3ff1752a194223ce5a4964ce684d7d1b85a2e1f46f845d592b9955f21d74143",
+      "mode": 420
+    },
+    "source/Cargo.toml": {
+      "size": 259,
+      "sha256": "94f82731d51b47bec1cdbe5d47dfa38e52e9c8b1163897ba8e57c910ae721de9",
+      "mode": 420
+    },
     "source/LICENSE": {
       "size": 1064,
       "sha256": "9674300c95608740e10ef88e8fbd6544c433af769e97e814c55254c43e4d1781",
@@ -22,13 +35,178 @@
       "mode": 420
     },
     "source/host/src/credentials.rs": {
-      "size": 9430,
-      "sha256": "f154827dcd72c94a43b8fb35f246b4883b42ef5b8a790dd4ac37bce83bef4664",
+      "size": 12600,
+      "sha256": "0b4f6dd4fca878c2afd575540e38eeddf453f893d8dfad085cc077e771518359",
       "mode": 420
     },
     "source/host/src/main.rs": {
-      "size": 35401,
-      "sha256": "42fe40d178b8b2c8d787d6da404bfaba195e22c764051482a73868536e619d18",
+      "size": 78209,
+      "sha256": "f3fcdf8d548903da982313ce69dfb4e00ba63df99421823216193712b7f18327",
+      "mode": 420
+    },
+    "source/src/api.rs": {
+      "size": 19732,
+      "sha256": "9f1025ba3912dd192c4e9c39ed11d8f0a56525a9557316f2149ad5a7d9951fe7",
+      "mode": 420
+    },
+    "source/src/auth.rs": {
+      "size": 7978,
+      "sha256": "64d6f13ae0060e43134f80841896d8d9de613edec34612c15ed4c1f88771523e",
+      "mode": 420
+    },
+    "source/src/bindings.rs": {
+      "size": 677870,
+      "sha256": "bd55d14dce3e3767dbb9f8c62f55ff509538826dd7361a1c34e2fc3f11cbabf3",
+      "mode": 420
+    },
+    "source/src/config.rs": {
+      "size": 11518,
+      "sha256": "c4c585317c3ab83fba4d2b4c41ce03e15830854e29b4011ba3e73e6671fcfaf1",
+      "mode": 420
+    },
+    "source/src/dav.rs": {
+      "size": 12823,
+      "sha256": "c1d4ace4d8eb9949bf1e6c8d2c52617dd33e7829232894c45ad83910d4645793",
+      "mode": 420
+    },
+    "source/src/graph.rs": {
+      "size": 45952,
+      "sha256": "bc3be8877b01a1b284cd9feab4ed6abad76f12f1149e397d6c7b316c72ec6ec5",
+      "mode": 420
+    },
+    "source/src/http_client.rs": {
+      "size": 7369,
+      "sha256": "c8514c4839c1c683558b54c6cffea6b50dbe8364bca60104f503816a41e19525",
+      "mode": 420
+    },
+    "source/src/index.rs": {
+      "size": 15695,
+      "sha256": "437afa889d0c4dcfe29554a84e09a25bf87cf0629252a547aed1b17c2908289a",
+      "mode": 420
+    },
+    "source/src/lib.rs": {
+      "size": 17537,
+      "sha256": "6a85ceeeb023beafcee0ead9b52c4faa8307a1a3c6f79daa9205a6967cc985a5",
+      "mode": 420
+    },
+    "source/src/snapshot.rs": {
+      "size": 23620,
+      "sha256": "f1f639781e1b5e001b4933a8178f69cd3ac266d392b62ddfd9a8f1531f71b71c",
+      "mode": 420
+    },
+    "source/src/state_file.rs": {
+      "size": 4254,
+      "sha256": "998d43c43cab033503765bfd899d2613a153efd72f3d498ff6d02b10c28aa795",
+      "mode": 420
+    },
+    "source/src/sync.rs": {
+      "size": 14362,
+      "sha256": "c45333265d776719174263bc87afb06c6efc51a789dc864328ae89574d9c427d",
+      "mode": 420
+    },
+    "source/src/sync_stats.rs": {
+      "size": 4332,
+      "sha256": "b9b3a7734d412305b4508eb51af4d86cb8304fad25dc666f005b011ab0b10cd6",
+      "mode": 420
+    },
+    "source/src/upload.rs": {
+      "size": 3139,
+      "sha256": "fa5397298883f128ecf87a6d465f43ef88eafca793f5e1ee88b3674a07d0c0e4",
+      "mode": 420
+    },
+    "source/src/xml.rs": {
+      "size": 9520,
+      "sha256": "391997a24c12496ad8c6e109d1145e9652b19e7581b606400ec19a76df680d69",
+      "mode": 420
+    },
+    "source/systemd/onedrive-davfs-mount.service": {
+      "size": 1275,
+      "sha256": "efc9aafb9736fa090407ff880811c47c192e2f3a76648374993814a057b51dfd",
+      "mode": 420
+    },
+    "source/systemd/onedrive-davfs-sync.service": {
+      "size": 655,
+      "sha256": "b1bf4746c6f49c3972eadd89c512e2bba0e10f470dda1c6274dabc8268be084c",
+      "mode": 420
+    },
+    "source/systemd/onedrive-davfs-sync.timer": {
+      "size": 217,
+      "sha256": "7145183b3413c19637bb57cbd9d6c0bc0012f5c0742280e12f7f25375bb3c02c",
+      "mode": 420
+    },
+    "source/systemd/onedrive-davfs.env.example": {
+      "size": 1216,
+      "sha256": "fed0b1d593a47f8c47ebb4bfc70587fa3f047acd4e70b0e2fb5d8bdb56dbcfdd",
+      "mode": 420
+    },
+    "source/systemd/onedrive-davfs.service": {
+      "size": 2172,
+      "sha256": "07a419a4c21b2f8873a5e8ad5f2f0704d41416e1be969c65a3b4f7cdb932e429",
+      "mode": 420
+    },
+    "source/tools/auth_common.py": {
+      "size": 5992,
+      "sha256": "c38f3d68046801c2f1361a2f5683f0fbdb92acb89446b99798df2c459971b62f",
+      "mode": 420
+    },
+    "source/tools/benchmark_backend.py": {
+      "size": 6267,
+      "sha256": "0635cfdc61f2edd855b00fb108f6eac886b4c15e79b8fc3a4ea145e507679ec6",
+      "mode": 420
+    },
+    "source/tools/browser-login.py": {
+      "size": 4937,
+      "sha256": "dd8a077602a607feb442dc478c84454755e356a81e8506b1ec8664292f29122e",
+      "mode": 420
+    },
+    "source/tools/device-code-login.sh": {
+      "size": 173,
+      "sha256": "1109327e426184bc49b69da35826ab42327b5005b94f77609d26c884b607bb28",
+      "mode": 420
+    },
+    "source/tools/device-login.py": {
+      "size": 2604,
+      "sha256": "a621733a3f1437aaa4352ec10dba52494b2efda6bbd224f5b09d2a3986fcb43f",
+      "mode": 420
+    },
+    "source/tools/profile-sync.py": {
+      "size": 1085,
+      "sha256": "978378d68fc3bd568049f5c33cfdafbc85fb3174cb6fa1260ea63040e5a38514",
+      "mode": 420
+    },
+    "source/tools/profiles.py": {
+      "size": 16150,
+      "sha256": "5e7c9849d51807b69f65f6ceb0cf81a10e75fcd813e9d139e67abd28b82e9bb3",
+      "mode": 420
+    },
+    "source/tools/sync-tick.sh": {
+      "size": 452,
+      "sha256": "7e663dff7e454fa3d9114a81ca5f564e78df0483cab91f53c575e2379e435aa7",
+      "mode": 420
+    },
+    "source/tools/test_auth.py": {
+      "size": 7867,
+      "sha256": "bf2536b25966f60c0a8f3f62a40a14893bd0dcbfbcd2e23a6ef6420cd5f56f60",
+      "mode": 420
+    },
+    "source/tools/test_host_component.py": {
+      "size": 9048,
+      "sha256": "0d8bae86b638f5e3ab323b572d83b06f211251e4af26b0aec7af447fd2d29e24",
+      "mode": 420
+    },
+    "source/tools/test_performance.py": {
+      "size": 4889,
+      "sha256": "4008f3a8c62027cb4fffc44d4e0db27839239eb37f8c64ffc9b79cb6cb6f263e",
+      "mode": 420
+    },
+    "source/tools/test_setup.py": {
+      "size": 7638,
+      "sha256": "e7df82e7b8565c9fb398bbc727dac86ffeeffcff1a3ac766290856bb8769fd3a",
+      "mode": 420
+    },
+    "source/wit/world.wit": {
+      "size": 405,
+      "sha256": "9f7d720b5650a4cdb8ed85728582bfc8c5dc4b305a1b7755426f02a659376771",
       "mode": 420
     }
   }

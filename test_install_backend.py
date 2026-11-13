@@ -12,9 +12,55 @@ import unittest
 from unittest.mock import patch
 
 from install_backend import BUNDLE_DIR, build_host, check_platform, install, main, unpack_bundle
+from tools.build_backend_bundle import source_snapshot
 
 
 class BackendInstallerTests(unittest.TestCase):
+    def test_source_identity_covers_uncommitted_inputs_and_excludes_python_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "src/lib.rs").write_text("original")
+            (root / "src/upload.rs").write_text("new untracked source")
+            paths = "src/upload.rs\ntools/__pycache__/ignored.pyc\nsrc/lib.rs\n"
+            with patch("tools.build_backend_bundle.subprocess.check_output", return_value=paths):
+                files, before = source_snapshot(root)
+                self.assertEqual(set(files), {"src/lib.rs", "src/upload.rs"})
+                (root / "src/upload.rs").write_text("modified untracked source")
+                _, after = source_snapshot(root)
+                self.assertNotEqual(before, after)
+                with patch("tools.build_backend_bundle.subprocess.check_output",
+                           return_value="src/lib.rs\nsrc/upload.rs\n"):
+                    self.assertEqual(source_snapshot(root)[1], after)
+
+    def test_tuning_renders_only_requested_values_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "performance with spaces"
+            args = ["bash", str(Path(__file__).with_name("tune_backend.sh")),
+                    "--output", str(output), "--library", "personal", "--mount", str(root / "mount"),
+                    "--poll-seconds", "10", "--cache-mib", "512", "--upload-delay", "1",
+                    "--dir-refresh", "10", "--max-upload-mib", "1024", "--perf-log", "--cached-dav-reads"]
+            subprocess.run(args, check=True, capture_output=True, text=True)
+            self.assertIn("ONEDRIVE_MAX_UPLOAD_BYTES=1073741824", (output / "performance.env").read_text())
+            self.assertIn('EnvironmentFile="', next(output.glob("systemd-user/*.service.d/*.conf")).read_text())
+            self.assertIn("OnUnitActiveSec=\nOnBootSec=15s\nOnUnitActiveSec=10s", next(output.glob("systemd-user/*.timer.d/*.conf")).read_text())
+            self.assertIn("delay_upload 1", (output / "davfs2.conf.snippet").read_text())
+            self.assertEqual((output / "performance.env").stat().st_mode & 0o777, 0o600)
+            before = (output / "performance.env").read_bytes()
+            self.assertNotEqual(subprocess.run(args, capture_output=True).returncode, 0)
+            self.assertEqual((output / "performance.env").read_bytes(), before)
+
+    def test_tuning_rejects_invalid_values_without_creating_output(self):
+        for options in [[], ["--poll-seconds", "0"], ["--cache-mib", "512"],
+                        ["--max-upload-mib", "256001"], ["--library", "../escape", "--perf-log"]]:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "not-created"
+                result = subprocess.run(["bash", str(Path(__file__).with_name("tune_backend.sh")),
+                                         "--output", str(output), *options], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(output.exists())
+
     def test_bash_entrypoint_forwards_arguments_and_failure_from_another_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -102,6 +148,29 @@ class BackendInstallerTests(unittest.TestCase):
             with patch("install_backend.shutil.which", return_value=None):
                 with self.assertRaisesRegex(ValueError, "Rust/cargo"):
                     build_host(root, BUNDLE_DIR, manifest)
+
+    def test_native_build_rejects_mismatched_source_snapshot_before_compiling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("install_backend.shutil.which", return_value="/fixture/cargo"), \
+                    patch("install_backend.unpack_bundle", return_value={
+                        "revision": "same", "source_tree_sha256": "different",
+                    }), patch("install_backend.subprocess.run") as compiler:
+                with self.assertRaisesRegex(ValueError, "different source snapshots"):
+                    build_host(Path(directory), BUNDLE_DIR, {
+                        "revision": "same", "source_tree_sha256": "expected",
+                    })
+                compiler.assert_not_called()
+
+    def test_source_manifest_identity_must_match_its_archived_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copyfile(BUNDLE_DIR / "onedrive-davfs-host-source.tar.gz",
+                            root / "onedrive-davfs-host-source.tar.gz")
+            manifest = json.loads((BUNDLE_DIR / "source.json").read_text())
+            manifest["source_tree_sha256"] = "0" * 64
+            (root / "source.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "source snapshot checksum"):
+                unpack_bundle(root, root / "staged", source=True)
 
     @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64",
                          "bundled native host requires Linux x86-64")

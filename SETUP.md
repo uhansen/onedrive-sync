@@ -213,3 +213,92 @@ If setup fails, read its explicit error, fix consent/permissions or the
 reported local conflict, and rerun `activate` for the saved library. Do not
 delete credential directories or upload historical `lost+found` files
 blindly. Never share token files, WebDAV secrets or unredacted status output.
+
+## Optional performance tuning
+
+Defaults remain conservative: roughly 30-second delta polling, davfs2's
+50 MiB cache, 10-second post-close upload delay and 60-second directory refresh.
+Polling controls cloud metadata discovery, not background downloads. Cache and
+poll delays are not a guaranteed sum; opening a file can trigger revalidation.
+
+The bundled backend batches outbound writes and reuses bounded HTTPS
+connections. An unchanged delta cursor avoids decoding the full snapshot;
+account/drive identity is still checked on every tick. Writes and sync remain
+serialized to protect credentials and indexes. This is not parallel cloud upload.
+For transport troubleshooting, `ONEDRIVE_HTTP_POOL_IDLE_PER_HOST=0` in the
+generated environment file disables connection reuse after a daemon restart
+(default 1 idle connection per host, at most 8 globally).
+
+Generate **only the options you want**, without applying them:
+
+```bash
+TUNING="$HOME/.config/onedrive-davfs/performance-personal"
+bash "$HOME/.config/omarchy/plugins/onedrive-sync/tune_backend.sh" \
+  --output "$TUNING" --library personal \
+  --mount "$HOME/OneDrive-Libraries/personal" \
+  --poll-seconds 10 --cache-mib 512 --upload-delay 1 --dir-refresh 10 \
+  --max-upload-mib 1024 --perf-log
+```
+
+Use the actual library ID and mountpoint. Omit `--library` for legacy
+`onedrive-davfs.service` / `onedrive-davfs-sync.timer` installations.
+The output directory must be new; nothing existing is overwritten. It must
+remain in place because generated service drop-ins reference `performance.env`.
+Omitted options leave existing settings unchanged.
+The polling drop-in replaces timer triggers with the standard 15-second
+boot trigger and your selected interval; review it before using a customized
+calendar/timer schedule.
+
+To apply after installing this backend version, review generated files, close
+cloud files and let pending uploads finish. Copy the generated `systemd-user/`
+drop-in directories into `~/.config/systemd/user/`, preserving existing files.
+Back up `~/.davfs2/davfs2.conf`, then merge `davfs2.conf.snippet` into the
+section for that exact mountpoint (create the file if absent). Do not duplicate
+an existing mount section or replace unrelated settings.
+Run `systemctl --user daemon-reload`; stop the library's mount service, restart
+its daemon and sync timer, then start the mount service again. For `personal`,
+the units are `onedrive-davfs-personal-mount.service`,
+`onedrive-davfs-personal.service`, and `onedrive-davfs-personal-sync.timer`.
+Do not unmount with unsaved/open files. Remounting is required for davfs changes.
+
+Larger caches use more disk; davfs can exceed the configured size for open
+files. Lower upload delays can upload temporary/intermediate editor files.
+Faster polling increases Microsoft Graph traffic and can cause throttling.
+Keep local copies of important pending uploads; do not clear `lost+found`.
+
+The upload limit defaults to **64 MiB**. `--max-upload-mib 1024` explicitly
+allows up to 1 GiB. Uploads spool into private, unlinked local files before
+cloud transmission, using disk up to the configured per-request limit and
+bounded 10 MiB transfer chunks. Unknown-length bodies are size-checked too.
+Insufficient local storage fails explicitly. The existing approximately
+five-minute request budget still applies: large files on slow connections can
+time out. Interrupted sessions are cancelled when possible or expire at
+Microsoft; uploads are not blindly retried or resumed across daemon restarts.
+Cloud quota, policy, and Graph limits still apply.
+
+`--perf-log` enables privacy-safe host stage timings in the journal and
+successful sync-stage timings in authenticated status. Turn it off with
+`ONEDRIVE_PERF_LOG=0` in the generated environment file and restart the daemon.
+Inspect `journalctl --user -u onedrive-davfs-personal.service`; timing records
+omit URLs, file/account names and credentials. Other ordinary logs/status may
+contain private details; review before sharing. Timings distinguish queue,
+credential, identity, snapshot and network delays rather than assuming a slow
+tick means slow Graph.
+
+Advanced, opt-in `--cached-dav-reads` lets cached HEAD/PROPFIND metadata requests
+run while a transfer/sync holds the writer slot. It never falls back to Graph:
+missing/stale cache entries return 503 until synchronization makes them available.
+Leave it off if applications require immediate network lookup of uncached names.
+This does not parallelize GET downloads or uploads.
+
+Offline verification on a disposable account fixture reduced peak host RSS
+during 32 MiB upload intake from about 130 MiB to 37 MiB. With an intentionally
+blocked writer, optional cached directory lookup took about 0.8 ms instead of
+516 ms. These are isolated memory/contention measurements, **not Microsoft
+upload throughput or promised cloud visibility**. The 34,416-node native
+snapshot fixture took about 11 ms to decode, so snapshot parsing alone does
+not explain the observed multi-second sync ticks.
+
+To undo tuning, remove only the generated `90-performance.conf` drop-ins,
+restore the affected davfs options from your backup, reload systemd and repeat
+the controlled restart/remount. Do not remove customized drop-ins or credentials.

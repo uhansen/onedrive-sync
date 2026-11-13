@@ -32,7 +32,9 @@ def check_platform():
 
 def safe_path(name, source=False):
     path = PurePosixPath(name)
-    allowed = (name == "source/LICENSE" or name.startswith("source/host/")) if source else (
+    allowed = (name in ("source/LICENSE", "source/Cargo.toml", "source/Cargo.lock")
+               or any(name.startswith("source/" + directory + "/")
+                      for directory in ("host", "src", "wit", "tools", "systemd"))) if source else (
         name == "bin/onedrive-davfs-host" or name.startswith("share/onedrive-davfs/"))
     if (str(path) != name or path.is_absolute() or ".." in path.parts
             or not allowed):
@@ -74,6 +76,13 @@ def unpack_bundle(bundle_dir, destination, source=False):
     required = "source/host/Cargo.toml" if source else "bin/onedrive-davfs-host"
     if seen != set(files) or required not in seen:
         raise ValueError("Backend bundle is incomplete.")
+    if source and manifest.get("source_tree_sha256"):
+        digest = hashlib.sha256()
+        for name in sorted(files):
+            data = (destination / safe_path(name, source=True)).read_bytes()
+            digest.update(name.removeprefix("source/").encode() + b"\0" + hashlib.sha256(data).digest())
+        if digest.hexdigest() != manifest["source_tree_sha256"]:
+            raise ValueError("Backend source snapshot checksum mismatch.")
     return manifest
 
 
@@ -83,6 +92,8 @@ def build_host(staged, bundle_dir, manifest):
     source = unpack_bundle(bundle_dir, staged, source=True)
     if source["revision"] != manifest["revision"]:
         raise ValueError("Host source and portable backend artifacts have different revisions.")
+    if source.get("source_tree_sha256") != manifest.get("source_tree_sha256"):
+        raise ValueError("Host source and portable backend artifacts have different source snapshots.")
     build_directory = staged / "build"
     print("Building the bundled native host for this machine (Cargo may download dependencies)...", flush=True)
     subprocess.run(["cargo", "build", "--locked", "--release",

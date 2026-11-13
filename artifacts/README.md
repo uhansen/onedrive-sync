@@ -4,7 +4,8 @@
 per-file hashes/modes. The binary archive includes the native host, Wasm
 component, matching helpers, upstream MIT license, and service templates.
 `source.json` and `onedrive-davfs-host-source.tar.gz` include the matching host
-source and Cargo lockfile for local native builds.
+source and Cargo lockfile for local native builds, plus the component sources,
+helpers and tests so uncommitted source snapshots remain inspectable.
 
 | Platform | Installation |
 | --- | --- |
@@ -34,7 +35,7 @@ workflow. This checks the backend on ARM64, not Apple-specific kernel/drivers.
 
 ## Rebuild the bundle
 
-Check out the revision in `backend.json` in a clean backend checkout. Build
+Check out `base_revision` (or `revision` for older bundles) in a clean backend checkout. Build
 and test both artifacts before packaging:
 
 ```bash
@@ -57,3 +58,11 @@ Build on a compatible Linux x86-64 machine. The packaging tool records source
 identity, but does not prove that stale build outputs match that source.
 If changing the supported platform or minimum glibc, verify the binary's
 actual requirements and update the installer and documentation together.
+
+For explicitly approved local changes that have not been committed, use
+`--allow-dirty` after rebuilding/testing. Such bundles are marked
+`source_dirty: true`, retain `base_revision`, record `source_tree_sha256`, and
+use `BASE+source.HASH` as their revision; they do not pretend to be that clean
+Git commit. The matching complete source snapshot is included in the source
+archive. Rebuild that snapshot, not just the base commit, to reproduce changes.
+The installer rejects mismatched binary/component and native-source identities.

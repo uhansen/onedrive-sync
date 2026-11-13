@@ -39,7 +39,8 @@ and is never shown in QML.
 - `Sync now` action using rclone's local RC endpoint (`rclone_mount` only --
   WebDAV/davfs2 has no equivalent discrete sync job, so this action is
   hidden for `wasm_davfs`)
-- `Open folder` action
+- `Open folder` action uses the desktop's default file manager (including Flea
+  when configured as the default); revealing a selected file still uses Nautilus
 - `Reconnect` action:
   - `rclone_mount`: shells out to `rclone config reconnect ...`
   - `wasm_davfs`: opens a floating terminal (via Omarchy's own

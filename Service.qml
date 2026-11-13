@@ -571,7 +571,7 @@ Item {
   function openFolderAt(path) {
     var abs = localPathFor(path)
     if (!abs) return
-    Quickshell.execDetached(["uwsm-app", "--", "nautilus", abs])
+    Quickshell.execDetached(["uwsm-app", "--", "xdg-open", abs])
     actionStatus = "Opened folder"
     actionStatusTimer.restart()
   }
@@ -647,7 +647,7 @@ Item {
 
   function openFolder() {
     if (mountPointExpanded === "") return
-    Quickshell.execDetached(["uwsm-app", "--", "nautilus", mountPointExpanded])
+    Quickshell.execDetached(["uwsm-app", "--", "xdg-open", mountPointExpanded])
   }
 
   function openFile(file) {

@@ -2,12 +2,12 @@
   "format": 1,
   "platform": "source",
   "source": "https://github.com/uhansen/onedrive-davfs",
-  "revision": "3bcf6382ecdc9c4bd8be7f971a772fa31dd03cb3",
+  "revision": "8ccb9e9e0bcec4b7bdd8d54f445a223256bdbe60",
   "license": "MIT",
-  "base_revision": "3bcf6382ecdc9c4bd8be7f971a772fa31dd03cb3",
+  "base_revision": "8ccb9e9e0bcec4b7bdd8d54f445a223256bdbe60",
   "source_dirty": false,
-  "source_tree_sha256": "4a4d7b9e3ee7124b0c21b1cac7c343a12b58a033bab0008bbbc9debbfab3c179",
-  "sha256": "95a70a8227edd734269dceefcfcaa062ce7bf0886ee304d82f1c6192838a06ee",
+  "source_tree_sha256": "a406fcb8a998adc90f9521f90f171e5bfff96673b3d4153b8476991e401f1404",
+  "sha256": "0508ab67b325c3d98b86a080857167741f6a3b029f37c5dc8bf599c3b4150f52",
   "files": {
     "source/Cargo.lock": {
       "size": 3114,
@@ -25,28 +25,33 @@
       "mode": 420
     },
     "source/host/Cargo.lock": {
-      "size": 54945,
-      "sha256": "f6353a3904dc6a7b603175f8f1594ba88bdbc36c5815c8e984a3617623431a62",
+      "size": 54982,
+      "sha256": "f4d80b40af580465bb3aabf422c5c533aa5e2f05c10969a78e3bb2a6726ea2e0",
       "mode": 420
     },
     "source/host/Cargo.toml": {
-      "size": 931,
-      "sha256": "27fad790832ad1dbea8a305763e195a084cfe4c6c6c7f3f4594d3d62200b9366",
+      "size": 983,
+      "sha256": "14245d86e798d7efa6dd790eda8ddf9823ba555b992cd49a299f94fb9e7acb69",
+      "mode": 420
+    },
+    "source/host/src/cooldown.rs": {
+      "size": 17586,
+      "sha256": "b8c2faf161b35518618c188ef0a296c0bd08097295ca46351c013e3f6340e45d",
       "mode": 420
     },
     "source/host/src/credentials.rs": {
-      "size": 12600,
-      "sha256": "0b4f6dd4fca878c2afd575540e38eeddf453f893d8dfad085cc077e771518359",
+      "size": 14876,
+      "sha256": "431b909ac5e54ca5932365d0661ab62420871ceb8f718c5dd1a1607ff86fb592",
       "mode": 420
     },
     "source/host/src/main.rs": {
-      "size": 78209,
-      "sha256": "f3fcdf8d548903da982313ce69dfb4e00ba63df99421823216193712b7f18327",
+      "size": 84774,
+      "sha256": "2368959fed23ee4b4d8c2f4f200e998257c7a2ed9ccd56d8d986e2ca52fae860",
       "mode": 420
     },
     "source/src/api.rs": {
-      "size": 19732,
-      "sha256": "9f1025ba3912dd192c4e9c39ed11d8f0a56525a9557316f2149ad5a7d9951fe7",
+      "size": 20500,
+      "sha256": "d367f8e7ba378e15b270565268a42e7a158542778e566e047fce03469d752f88",
       "mode": 420
     },
     "source/src/auth.rs": {
@@ -64,14 +69,19 @@
       "sha256": "c4c585317c3ab83fba4d2b4c41ce03e15830854e29b4011ba3e73e6671fcfaf1",
       "mode": 420
     },
+    "source/src/cooldown.rs": {
+      "size": 1860,
+      "sha256": "f5ba36b6b5ce837a64df9919b16081b78e388113515c74b40ae101cc5fcce0b2",
+      "mode": 420
+    },
     "source/src/dav.rs": {
-      "size": 12823,
-      "sha256": "c1d4ace4d8eb9949bf1e6c8d2c52617dd33e7829232894c45ad83910d4645793",
+      "size": 13763,
+      "sha256": "320e9e0ce8179b004e8b765f9fba0c5636b1f58f9e5d541e1effe9f374977f42",
       "mode": 420
     },
     "source/src/graph.rs": {
-      "size": 45952,
-      "sha256": "bc3be8877b01a1b284cd9feab4ed6abad76f12f1149e397d6c7b316c72ec6ec5",
+      "size": 46234,
+      "sha256": "1116dff60e4eefa8c20860a1f00d1dcee038f0abdeb39a2e295ca2e7cc7575d8",
       "mode": 420
     },
     "source/src/http_client.rs": {
@@ -80,18 +90,18 @@
       "mode": 420
     },
     "source/src/index.rs": {
-      "size": 15695,
-      "sha256": "437afa889d0c4dcfe29554a84e09a25bf87cf0629252a547aed1b17c2908289a",
+      "size": 15966,
+      "sha256": "2e05be81d6db65d97e7a94cf9190683b13bd3adec87f77419245cfaf2219bcb8",
       "mode": 420
     },
     "source/src/lib.rs": {
-      "size": 17537,
-      "sha256": "6a85ceeeb023beafcee0ead9b52c4faa8307a1a3c6f79daa9205a6967cc985a5",
+      "size": 17551,
+      "sha256": "de1642515f7e1b8ca09c8bab36234f48461944085807703e2794ecdc33fe59aa",
       "mode": 420
     },
     "source/src/snapshot.rs": {
-      "size": 23620,
-      "sha256": "f1f639781e1b5e001b4933a8178f69cd3ac266d392b62ddfd9a8f1531f71b71c",
+      "size": 24830,
+      "sha256": "e3e60a1cd6db737454fc40d0e9757b3723a48ce9d5ecffb26af4e6849929d344",
       "mode": 420
     },
     "source/src/state_file.rs": {
@@ -100,8 +110,8 @@
       "mode": 420
     },
     "source/src/sync.rs": {
-      "size": 14362,
-      "sha256": "c45333265d776719174263bc87afb06c6efc51a789dc864328ae89574d9c427d",
+      "size": 15065,
+      "sha256": "914eaf4bb432b61c9a72da8a5383be7b82770522daf7408747a6b9290d4fb8f6",
       "mode": 420
     },
     "source/src/sync_stats.rs": {

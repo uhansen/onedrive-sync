@@ -41,9 +41,9 @@
         "key": "refreshIntervalSec",
         "type": "integer",
         "label": "Refresh interval (seconds)",
-        "min": 5,
+        "min": 1,
         "max": 3600,
-        "step": 5,
+        "step": 1,
         "defaultValue": 30
       },
       {

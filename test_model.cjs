@@ -18,3 +18,17 @@ const tree = Model.flattenTree({
 }, {}, "/");
 assert.deepEqual(tree.map(row => row.path), ["/@work", "/@personal"]);
 assert.equal(Model.parseSearchResults('{"ok":false,"error":"Unavailable"}').results.length, 0);
+
+const sameBinding = { generation: 4, namespaceRevision: "9007199254740993" };
+const nextNamespace = { generation: 4, namespaceRevision: "9007199254740994" };
+assert.notEqual(Model.namespaceFingerprint(sameBinding), Model.namespaceFingerprint(nextNamespace));
+assert.equal(Model.parseIndexStatus(JSON.stringify(sameBinding)).namespaceRevision, "9007199254740993");
+assert.equal(Model.namespaceFingerprint({ libraryStatuses: [
+  {profileId:"work",status:sameBinding}, {profileId:"personal",status:nextNamespace}
+]}), Model.namespaceFingerprint({ libraryStatuses: [
+  {profileId:"personal",status:nextNamespace}, {profileId:"work",status:sameBinding}
+]}));
+assert.deepEqual(Model.visibleRefreshPaths({"/a/b":true,"/a":true,"/collapsed":false}, "/a/b"),
+                 ["/","/a","/a/b"]);
+assert.deepEqual(Model.visibleRefreshPaths({}, "/selected"), ["/", "/selected"]);
+assert.notEqual(Model.namespaceFingerprint({}), Model.namespaceFingerprint({namespaceRevision:"1"}));

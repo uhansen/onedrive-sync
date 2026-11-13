@@ -140,7 +140,34 @@ function parseIndexStatus(raw) {
   parsed.lastTickResync = tick.resync === true
   parsed.generation = Number(parsed.generation || 0)
   parsed.pendingNextLink = parsed.pendingNextLink === true
+  parsed.namespaceRevision = namespaceRevision(parsed.namespaceRevision)
   return parsed
+}
+
+function namespaceRevision(value) {
+  var text = value === undefined || value === null ? "" : String(value)
+  return /^[0-9]{1,20}$/.test(text) ? text : ""
+}
+
+function namespaceFingerprint(status) {
+  if (Array.isArray(status.libraryStatuses)) {
+    return JSON.stringify(status.libraryStatuses.map(function(item) {
+      var details = item.status || {}
+      return [String(item.profileId || ""), Number(details.generation || 0), namespaceRevision(details.namespaceRevision)]
+    }).sort(function(a, b) { return a[0].localeCompare(b[0]) }))
+  }
+  return JSON.stringify([Number(status.generation || 0), namespaceRevision(status.namespaceRevision)])
+}
+
+function visibleRefreshPaths(expanded, selected) {
+  var paths = ["/"]
+  Object.keys(expanded || {}).forEach(function(path) {
+    if (expanded[path] && path.indexOf("/") === 0 && paths.indexOf(path) < 0) paths.push(path)
+  })
+  if (selected && selected.indexOf("/") === 0 && paths.indexOf(selected) < 0) paths.push(selected)
+  return paths.sort(function(a, b) {
+    return a.split("/").length - b.split("/").length || a.localeCompare(b)
+  })
 }
 
 function parseTree(raw) {
@@ -239,6 +266,8 @@ function statusSummary(statusText, pendingCount, lastSyncTs) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    namespaceFingerprint: namespaceFingerprint,
+    visibleRefreshPaths: visibleRefreshPaths,
     parseStatus: parseStatus,
     defaultStatus: defaultStatus,
     formatBytes: formatBytes,

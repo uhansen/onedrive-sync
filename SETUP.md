@@ -216,6 +216,80 @@ blindly. Never share token files, WebDAV secrets or unredacted status output.
 
 ## Optional performance tuning
 
+### Reversible low-latency preset
+
+Rendering remains the default: no services, mounts or installed settings change
+without `--apply`. First install a backend whose authenticated `/_status`
+advertises `"capabilities":{"persistedGraphCooldown":true}`. The preset's apply
+preflight refuses an older backend, even if its port is reachable.
+
+Close cloud files and let pending uploads finish. Render and review:
+
+```bash
+PLUGIN="$HOME/.config/omarchy/plugins/onedrive-sync"
+bash "$PLUGIN/tune_backend.sh" --preset low-latency \
+  --mount "$HOME/OneDrive" --output "$HOME/onedrive-tuning-review"
+```
+
+Apply with a **different, new** output directory (it retains private backups):
+
+```bash
+bash "$PLUGIN/tune_backend.sh" --preset low-latency --apply \
+  --mount "$HOME/OneDrive" --output "$HOME/onedrive-tuning-applied"
+```
+
+These commands select only the legacy `onedrive-davfs` units. For one explicitly
+registered library, add `--library personal` and use its registered mountpoint.
+There is no automatic migration or tuning of other libraries/accounts.
+Apply/restore require Omarchy Linux as a normal user; do not run with sudo.
+The selected daemon and mount service must already be active, authenticated
+cloud access must work, and the mounted source must match that library.
+
+The preset resets previous timer triggers, schedules the first tick with
+`OnActiveSec=1s`, subsequent ticks with `OnUnitInactiveSec=1s` (after completion,
+not overlapping ticks), and sets `AccuracySec=100ms`. It selects a 512 MiB davfs
+cache, `delay_upload 0`, `dir_refresh 1`, `file_refresh 0`, performance diagnostics
+on and the optional cache-only DAV lane **off**. Upload limits are unchanged;
+the preset rejects conflicting option overrides. One second is a scheduling
+target, not a cloud-visibility guarantee: network latency and persisted Graph
+cooldowns still apply. More frequent revalidation/polling increases traffic;
+immediate post-close uploads may expose intermediate editor files.
+
+Apply merges only these options into the exact mount's user
+`~/.davfs2/davfs2.conf` section, preserving custom options, globals and unrelated
+sections. It installs owned `90-performance.conf` service/timer drop-ins and a
+private environment under `~/.config/onedrive-davfs/tuning/UNIT/`. It does not
+edit accounts, credentials, `/etc/fstab`, widget settings or unit enablement.
+Unknown customized owned files are refused; files matching a recorded prior
+render can be updated. Other systemd drop-ins remain untouched: review any
+later overrides in a customized installation.
+
+The transaction stops only the selected timer, waits for current sync to finish,
+then attempts a normal unmount before stopping mount/daemon services. Busy
+mounts abort and recover the old timer without killing applications or using
+forced/lazy unmount. Successful apply requires an authenticated backend, a
+successful sync with verified cloud access, and a readable mount. Failed apply
+restores previous file bytes/modes and service activity; if recovery itself
+cannot safely unmount, it reports the retained backup for manual attention.
+
+Restore the exact backup printed by apply:
+
+```bash
+bash "$PLUGIN/tune_backend.sh" \
+  --restore "$HOME/onedrive-tuning-applied/backup"
+```
+
+Backup files and metadata are mode 0600 in a private directory and are retained,
+including an undo snapshot if restoration is attempted. Restore refuses changed
+files instead of discarding edits made after apply; review such changes first.
+It restores previous service activity, not a different backend binary/version.
+
+For prompt native-widget updates, separately set the **selected native widget**
+refresh to 1 second using its supported settings. This tool deliberately does
+not modify widget configuration.
+
+### Individual settings and compatibility rendering
+
 Defaults remain conservative: roughly 30-second delta polling, davfs2's
 50 MiB cache, 10-second post-close upload delay and 60-second directory refresh.
 Polling controls cloud metadata discovery, not background downloads. Cache and
@@ -245,11 +319,16 @@ Use the actual library ID and mountpoint. Omit `--library` for legacy
 The output directory must be new; nothing existing is overwritten. It must
 remain in place because generated service drop-ins reference `performance.env`.
 Omitted options leave existing settings unchanged.
-The polling drop-in replaces timer triggers with the standard 15-second
+The polling drop-in resets timer triggers to the standard 15-second
 boot trigger and your selected interval; review it before using a customized
 calendar/timer schedule.
 
-To apply after installing this backend version, review generated files, close
+For controlled apply/backup of individual settings, add `--apply` to a render
+command and use a new output directory; the same selected-library checks and
+restore workflow above apply. Without the low-latency preset, the capability
+preflight is not required.
+
+Alternatively, to apply manually after installing this backend version, review generated files, close
 cloud files and let pending uploads finish. Copy the generated `systemd-user/`
 drop-in directories into `~/.config/systemd/user/`, preserving existing files.
 Back up `~/.davfs2/davfs2.conf`, then merge `davfs2.conf.snippet` into the

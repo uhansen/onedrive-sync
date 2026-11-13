@@ -79,6 +79,12 @@ Item {
   property double lastTickAt: 0
   property double lastTickApplied: 0
   property double lastTickDurationMs: 0
+  property string namespaceFingerprint: ""
+  property int namespaceEpoch: 0
+  property int treeSubmittedNamespaceEpoch: 0
+  property int searchSubmittedNamespaceEpoch: 0
+  property var treeRefreshQueue: []
+  property double cooldownSecondsRemaining: 0
   property var treeByPath: ({})
   property var treeExpanded: ({})
   property string treeError: ""
@@ -100,7 +106,7 @@ Item {
   property string driveWebUrl: ""
   property string driveOwner: ""
 
-  readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
+  readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, isDavfsBackend ? 1 : 5, 3600)
   readonly property bool treeLoading: treeProcess.running
   readonly property bool searchLoading: searchProcess.running
   readonly property bool busy: statusProcess.running || controlProcess.running || syncProcess.running || authProcess.running || indexStatsProcess.running || treeProcess.running || pickFolderProcess.running
@@ -152,6 +158,9 @@ Item {
 
   function clearBrowser() {
     requestEpoch += 1
+    namespaceEpoch += 1
+    namespaceFingerprint = ""
+    treeRefreshQueue = []
     treeByPath = ({})
     treeExpanded = ({})
     searchResults = []
@@ -394,13 +403,38 @@ Item {
   }
 
   function fetchTree(path) {
-    if (!isDavfsBackend || treeProcess.running) return
+    if (!isDavfsBackend) return
     var target = String(path || "/")
     if (target.indexOf("..") !== -1) return
+    if (treeProcess.running) {
+      if (treeRefreshQueue.indexOf(target) < 0) treeRefreshQueue = treeRefreshQueue.concat([target])
+      return
+    }
     treeError = ""
     treeSubmittedEpoch = requestEpoch
+    treeSubmittedNamespaceEpoch = namespaceEpoch
     treeProcess.command = helperCommand("tree", target)
     treeProcess.running = true
+  }
+
+  function continueTreeRefresh() {
+    if (treeProcess.running || !treeRefreshQueue.length) return
+    var target = treeRefreshQueue[0]
+    treeRefreshQueue = treeRefreshQueue.slice(1)
+    fetchTree(target)
+  }
+
+  function refreshChangedNamespace() {
+    namespaceEpoch += 1
+    var paths = Model.visibleRefreshPaths(treeExpanded, selectedTreePath)
+    var visible = ({})
+    for (var i = 0; i < paths.length; i++) {
+      if (treeByPath[paths[i]]) visible[paths[i]] = treeByPath[paths[i]]
+    }
+    treeByPath = visible
+    treeRefreshQueue = paths
+    Qt.callLater(continueTreeRefresh)
+    if (searchQuery.length >= 2) searchDebounce.restart()
   }
 
   function ensureTreeRoot() {
@@ -467,7 +501,13 @@ Item {
     var selectedStatus = multiProfile ? libraryStatuses.find(function(item) { return item.profileId === root.selectedProfileId }) : null
     applyDriveMetadata(selectedStatus ? selectedStatus.status : parsed)
     var accessStatus = selectedStatus ? selectedStatus.status : parsed
+    var nextNamespace = Model.namespaceFingerprint(parsed)
+    if (namespaceFingerprint !== "" && namespaceFingerprint !== nextNamespace) refreshChangedNamespace()
+    namespaceFingerprint = nextNamespace
+    cooldownSecondsRemaining = accessStatus.cooldown && accessStatus.cooldown.active
+      ? Number(accessStatus.cooldown.retryAfterSec || 0) : 0
     indexError = String(accessStatus.error || accessStatus.lastSyncError || "")
+    if (cooldownSecondsRemaining > 0) indexError = "Microsoft Graph cooldown: " + Math.ceil(cooldownSecondsRemaining) + "s remaining. Cached metadata remains available."
     lastError = indexError
     accessVerified = accessStatus.accessVerified === true
     tokenExpiresInSec = Number(accessStatus.tokenExpiresInSec || 0)
@@ -514,6 +554,7 @@ Item {
     }
     searchSubmittedQuery = searchQuery
     searchSubmittedEpoch = requestEpoch
+    searchSubmittedNamespaceEpoch = namespaceEpoch
     searchProcess.command = helperCommand("search", searchQuery)
     searchProcess.running = true
   }
@@ -853,9 +894,11 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(treeStdout.text || "")
       var stderr = String(treeStderr.text || "")
-      if (root.treeSubmittedEpoch !== root.requestEpoch) return
-      if (exitCode === 0) root.applyTree(stdout)
-      else root.treeError = root.elideStatus(stderr || stdout || "Could not list folder")
+      if (root.treeSubmittedEpoch === root.requestEpoch && root.treeSubmittedNamespaceEpoch === root.namespaceEpoch) {
+        if (exitCode === 0) root.applyTree(stdout)
+        else root.treeError = root.elideStatus(stderr || stdout || "Could not list folder")
+      }
+      Qt.callLater(root.continueTreeRefresh)
     }
   }
 
@@ -870,7 +913,8 @@ Item {
       var stderr = String(searchStderr.text || "")
       var submittedQuery = root.searchSubmittedQuery
       root.searchSubmittedQuery = ""
-      if (submittedQuery !== root.searchQuery || root.searchSubmittedEpoch !== root.requestEpoch) {
+      if (submittedQuery !== root.searchQuery || root.searchSubmittedEpoch !== root.requestEpoch
+          || root.searchSubmittedNamespaceEpoch !== root.namespaceEpoch) {
         if (root.searchQuery.length >= 2) searchDebounce.restart()
         return
       }

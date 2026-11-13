@@ -3,16 +3,16 @@
   "platform": "linux-x86_64",
   "minimum_glibc": "2.38",
   "source": "https://github.com/uhansen/onedrive-davfs",
-  "revision": "3bcf6382ecdc9c4bd8be7f971a772fa31dd03cb3",
+  "revision": "8ccb9e9e0bcec4b7bdd8d54f445a223256bdbe60",
   "license": "MIT",
-  "base_revision": "3bcf6382ecdc9c4bd8be7f971a772fa31dd03cb3",
+  "base_revision": "8ccb9e9e0bcec4b7bdd8d54f445a223256bdbe60",
   "source_dirty": false,
-  "source_tree_sha256": "4a4d7b9e3ee7124b0c21b1cac7c343a12b58a033bab0008bbbc9debbfab3c179",
-  "sha256": "54ad8277cdb1463a99858ed9de459be5ce1ea8c243c663cb9a9090fe881281d7",
+  "source_tree_sha256": "a406fcb8a998adc90f9521f90f171e5bfff96673b3d4153b8476991e401f1404",
+  "sha256": "9dd6e85c690edc00c686633af7f176712e63abf1bdfa3516ec6d5143a2071328",
   "files": {
     "bin/onedrive-davfs-host": {
-      "size": 33065232,
-      "sha256": "786d6eaf2bad8b4816cac85eddc083c161f255427e864bcda567e7cbfd732a40",
+      "size": 33255856,
+      "sha256": "a33897f35fbff76b2194377bdf9adac665f99077d78d384bb22cc84ffe90427c",
       "mode": 493
     },
     "share/onedrive-davfs/LICENSE": {
@@ -36,8 +36,8 @@
       "mode": 493
     },
     "share/onedrive-davfs/onedrive_davfs.wasm": {
-      "size": 769969,
-      "sha256": "e1b25b3d1b5d1c3f773491c46f6290f6ffb6e6fdbb16f02718d23c44564daad9",
+      "size": 785979,
+      "sha256": "ec990e5cc09877192acd0b420166407eed92f136618d58263f57c943a791bb8e",
       "mode": 420
     },
     "share/onedrive-davfs/sync-tick.sh": {

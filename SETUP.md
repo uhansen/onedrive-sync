@@ -1,12 +1,12 @@
-# Install the plugin and configure your accounts
+# Configure your accounts for the plugin
 
-Already installed? Skip the installation section and follow only the account
-path you need: sign in, choose libraries, activate their mounts, and point the
-widget at them.
+This guide assumes the plugin is installed. If you need the native backend,
+install `onedrive-davfs` below; otherwise skip to account configuration.
+Sign in, choose libraries, activate their mounts, and point the widget at them.
 
 **Installing the plugin alone does not install a backend or configure an
-account.** The plugin controls an external rclone or native backend; install
-one of them before running its account commands.
+account.** The installation section covers only `onedrive-davfs`. The rclone
+account section is for readers who already have rclone installed.
 
 | What already works? | What to do next |
 | --- | --- |
@@ -14,85 +14,60 @@ one of them before running its account commands.
 | Backend available, account not configured | Follow the appropriate account path below, including one-time activation. |
 | One native library works; you want more | Use unified profiles in section 4, then add libraries/accounts in section 5. |
 
-## Installation (skip if already installed)
+## Install onedrive-davfs (skip if already installed)
 
-These commands target Omarchy/Arch. Run them in your normal user terminal,
-not a root shell. They install software but do not grant access to Microsoft
-accounts.
+This installer targets **Omarchy Linux only**, on x86-64 or ARM64 hardware.
+Apple Silicon is covered only when running Omarchy on a working ARM64 Linux
+installation, **not macOS**. Boot support, firmware/drivers and availability of
+Omarchy on your hardware are prerequisites, not installed by this script.
+Run commands in your normal user terminal, not a root shell.
+The installer requires `omarchy` on PATH and rejects macOS/non-Linux hosts.
 
-### Install the plugin
-
-```bash
-omarchy pkg add git python curl openssl xdg-utils
-omarchy plugin add https://github.com/uhansen/onedrive-sync.git --enable
-omarchy plugin list
-```
-
-The plugin normally lives in `~/.config/omarchy/plugins/onedrive-sync/`.
-If it is already installed, do not add another copy; use
-`omarchy plugin update onedrive-sync` when you intend to update it.
-A sign-in or missing-service message is expected until the backend/account
-is configured.
-
-### Option A: install rclone
+Install the runtime prerequisites (no Rust toolchain is needed):
 
 ```bash
-omarchy pkg add rclone fuse3
-rclone version
-```
-
-Continue with section 2 to sign in and configure a mount/service using
-[the README template](README.md#example-systemd-user-unit). Installing rclone
-does not create that service automatically.
-
-### Option B: install the native backend
-
-Install `davfs2` and the native build prerequisites:
-
-```bash
-omarchy pkg add davfs2 base-devel cmake pkgconf
+omarchy pkg add python curl openssl xdg-utils davfs2
 ```
 
 If a package is unavailable in your enabled repositories, check the current
-Arch package instructions before continuing. Use an existing working Rust
-toolchain, or install one using the [official rustup instructions](https://rustup.rs/)
-and reopen your terminal.
+Arch package instructions before continuing.
 
-The unified account workflow requires matching host, Wasm component, and
-helpers. These examples pin the compatible M365 implementation at `7f3076a`;
-older releases/backend master may not include `profiles.py`, `/_resolve`, or
-`--account-dir`. Do not mix artifacts from different revisions.
-
-Use a new source directory; if you already have this checkout, preserve its
-local changes rather than running these clone/switch commands blindly.
+The installed plugin includes an installer and matching backend artifacts.
+Run as your normal user, **without sudo**:
 
 ```bash
-mkdir -p ~/source
-git clone https://github.com/uhansen/onedrive-davfs.git ~/source/onedrive-davfs
-cd ~/source/onedrive-davfs
-git switch --detach 7f3076a
-rustup target add wasm32-wasip2
-cargo build --locked --target wasm32-wasip2 --release
-cargo build --locked --manifest-path host/Cargo.toml --release
-```
-
-Continue only when both builds succeed. Install their outputs and the matching
-helpers:
-
-```bash
-install -d ~/.local/bin ~/.local/share/onedrive-davfs/tools
-install -m 755 host/target/release/onedrive-davfs-host ~/.local/bin/
-install -m 644 target/wasm32-wasip2/release/onedrive_davfs.wasm \
-  ~/.local/share/onedrive-davfs/
-install -m 755 tools/auth_common.py tools/browser-login.py tools/device-login.py \
-  tools/device-code-login.sh tools/profiles.py tools/profile-sync.py \
-  tools/sync-tick.sh ~/.local/share/onedrive-davfs/tools/
+python3 "$HOME/.config/omarchy/plugins/onedrive-sync/install_backend.py"
 "$HOME/.local/bin/onedrive-davfs-host" --help
 python3 "$HOME/.local/share/onedrive-davfs/tools/profiles.py" --help
 ```
 
-Keep the helpers together because they import shared modules. The native host
-replaces `wasmtime serve`; do not run both on the same endpoint.
+From a source checkout, use `python3 install_backend.py` instead. If your
+installed plugin lacks the script/artifacts, update it first.
+
+The installer selects a host for the current machine:
+
+| Platform | Requirements |
+| --- | --- |
+| Linux x86-64, glibc 2.38+ | Bundled executable; `libgcc_s` and `libm`. |
+| Linux ARM64 (`aarch64`/`arm64`) | Rust/cargo plus C/C++ tools and CMake; host is built from bundled source. |
+| Apple Silicon running Omarchy Linux | Same ARM64 source-build requirements; macOS is rejected. |
+| Linux x86-64 with older glibc or musl | Same source-build requirements as Linux ARM64. |
+
+On Arch, native build prerequisites can be installed with
+`omarchy pkg add base-devel cmake pkgconf`. Install Rust through
+[rustup](https://rustup.rs/) if needed. Source builds download locked Cargo
+dependencies and need sufficient memory and disk space. They reuse the bundled
+portable Wasm component; no Wasm toolchain is required. 32-bit ARM is not
+supported. All bundled code is from backend revision `7f3076a`.
+See [bundle details and rebuild instructions](artifacts/README.md).
+
+The installer verifies checksums and runs the staged host before copying
+files into `~/.local`. It preserves account credentials, fstab and user service
+configuration; it does not log in, install packages, activate mounts, or
+restart processes. Re-running replaces bundled backend files. If upgrading a
+running backend, close open cloud files and coordinate stopping/restarting
+its services separately; do not assume the running process has been updated.
+The native host replaces `wasmtime serve`; do not run both on the same endpoint.
 For the plugin's optional copy-destination picker, system Python also needs
 `python-gobject` and a working desktop file-chooser portal.
 

@@ -4,8 +4,16 @@
 details panel, and a few safe control actions to the bar.
 
 **Configure your accounts with the [account setup guide](SETUP.md)**:
-install the plugin and either backend if needed, then sign in, select
-personal/work OneDrive or SharePoint/Teams libraries, and connect them.
+after installing the plugin, install `onedrive-davfs` if needed, then sign in
+and connect personal/work OneDrive or SharePoint/Teams libraries. Account
+configuration for existing rclone installations is also covered.
+
+To install the native backend, run `python3 install_backend.py` from this
+checkout, without sudo. Linux x86-64 (glibc 2.38+) uses the bundled executable;
+ARM64 builds the host from bundled source with Rust and native build tools,
+including on Apple Silicon running Omarchy Linux. macOS is not supported.
+Matching component/helpers go to `~/.local` without configuring accounts or
+starting services. See [SETUP.md](SETUP.md) for requirements and next steps.
 
 It is intentionally a **thin UI layer** over external daemons -- it supports
 two interchangeable backends, selected with the `backend` setting:

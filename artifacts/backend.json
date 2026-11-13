@@ -1,0 +1,101 @@
+{
+  "format": 1,
+  "platform": "linux-x86_64",
+  "minimum_glibc": "2.38",
+  "source": "https://github.com/uhansen/onedrive-davfs",
+  "revision": "7f3076a0f6405cc821369cc2082390a196ceb2d1",
+  "license": "MIT",
+  "sha256": "df98053eead16e45fd15eb5fbfd6d0b3fdca84014880f2e957a2c9b2a6189d97",
+  "files": {
+    "bin/onedrive-davfs-host": {
+      "size": 33095048,
+      "sha256": "fde29315ba7a9c64bce4e1dd28be0eec4e230f621bcfb7b9926354395c2dce7d",
+      "mode": 493
+    },
+    "share/onedrive-davfs/LICENSE": {
+      "size": 1064,
+      "sha256": "9674300c95608740e10ef88e8fbd6544c433af769e97e814c55254c43e4d1781",
+      "mode": 420
+    },
+    "share/onedrive-davfs/auth_common.py": {
+      "size": 5992,
+      "sha256": "c38f3d68046801c2f1361a2f5683f0fbdb92acb89446b99798df2c459971b62f",
+      "mode": 493
+    },
+    "share/onedrive-davfs/device-code-login.sh": {
+      "size": 173,
+      "sha256": "1109327e426184bc49b69da35826ab42327b5005b94f77609d26c884b607bb28",
+      "mode": 493
+    },
+    "share/onedrive-davfs/device-login.py": {
+      "size": 2604,
+      "sha256": "a621733a3f1437aaa4352ec10dba52494b2efda6bbd224f5b09d2a3986fcb43f",
+      "mode": 493
+    },
+    "share/onedrive-davfs/onedrive_davfs.wasm": {
+      "size": 747533,
+      "sha256": "23a3b300eb4d1cd05f1b67beee97414352122d153ddb93f50e1bc5e782fcc644",
+      "mode": 420
+    },
+    "share/onedrive-davfs/sync-tick.sh": {
+      "size": 452,
+      "sha256": "7e663dff7e454fa3d9114a81ca5f564e78df0483cab91f53c575e2379e435aa7",
+      "mode": 493
+    },
+    "share/onedrive-davfs/systemd/onedrive-davfs-mount.service": {
+      "size": 1275,
+      "sha256": "efc9aafb9736fa090407ff880811c47c192e2f3a76648374993814a057b51dfd",
+      "mode": 420
+    },
+    "share/onedrive-davfs/systemd/onedrive-davfs-sync.service": {
+      "size": 655,
+      "sha256": "b1bf4746c6f49c3972eadd89c512e2bba0e10f470dda1c6274dabc8268be084c",
+      "mode": 420
+    },
+    "share/onedrive-davfs/systemd/onedrive-davfs-sync.timer": {
+      "size": 217,
+      "sha256": "7145183b3413c19637bb57cbd9d6c0bc0012f5c0742280e12f7f25375bb3c02c",
+      "mode": 420
+    },
+    "share/onedrive-davfs/systemd/onedrive-davfs.service": {
+      "size": 2172,
+      "sha256": "07a419a4c21b2f8873a5e8ad5f2f0704d41416e1be969c65a3b4f7cdb932e429",
+      "mode": 420
+    },
+    "share/onedrive-davfs/tools/auth_common.py": {
+      "size": 5992,
+      "sha256": "c38f3d68046801c2f1361a2f5683f0fbdb92acb89446b99798df2c459971b62f",
+      "mode": 493
+    },
+    "share/onedrive-davfs/tools/browser-login.py": {
+      "size": 4937,
+      "sha256": "dd8a077602a607feb442dc478c84454755e356a81e8506b1ec8664292f29122e",
+      "mode": 493
+    },
+    "share/onedrive-davfs/tools/device-code-login.sh": {
+      "size": 173,
+      "sha256": "1109327e426184bc49b69da35826ab42327b5005b94f77609d26c884b607bb28",
+      "mode": 493
+    },
+    "share/onedrive-davfs/tools/device-login.py": {
+      "size": 2604,
+      "sha256": "a621733a3f1437aaa4352ec10dba52494b2efda6bbd224f5b09d2a3986fcb43f",
+      "mode": 493
+    },
+    "share/onedrive-davfs/tools/profile-sync.py": {
+      "size": 1085,
+      "sha256": "978378d68fc3bd568049f5c33cfdafbc85fb3174cb6fa1260ea63040e5a38514",
+      "mode": 493
+    },
+    "share/onedrive-davfs/tools/profiles.py": {
+      "size": 16150,
+      "sha256": "5e7c9849d51807b69f65f6ceb0cf81a10e75fcd813e9d139e67abd28b82e9bb3",
+      "mode": 493
+    },
+    "share/onedrive-davfs/tools/sync-tick.sh": {
+      "size": 452,
+      "sha256": "7e663dff7e454fa3d9114a81ca5f564e78df0483cab91f53c575e2379e435aa7",
+      "mode": 493
+    }
+  }
+}

@@ -18,3 +18,26 @@ jobs:
         run: node test_model.cjs
       - name: Validate manifest JSON
         run: python3 -m json.tool manifest.json > /dev/null
+
+  backend-platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    env:
+      CARGO_BUILD_JOBS: "2"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test installer platform routing and verification
+        run: python3 -m unittest test_install_backend
+      - name: Test native build and installation on ARM64
+        # Test the installation engine; the user-facing CLI requires Omarchy.
+        run: |
+          python3 -c 'from pathlib import Path; import os; from install_backend import install; install(Path(os.environ["RUNNER_TEMP"]) / "backend")'
+      - name: Check native executable and portable helpers
+        run: |
+          "$RUNNER_TEMP/backend/bin/onedrive-davfs-host" --help
+          python3 "$RUNNER_TEMP/backend/share/onedrive-davfs/tools/profiles.py" --help

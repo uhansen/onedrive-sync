@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "platform": "source",
+  "source": "https://github.com/uhansen/onedrive-davfs",
+  "revision": "7f3076a0f6405cc821369cc2082390a196ceb2d1",
+  "license": "MIT",
+  "sha256": "522f7afac1c633ef93a510fff4eaf7d99ce71fb9dbacd6ce3a1b5a8096f44ed2",
+  "files": {
+    "source/LICENSE": {
+      "size": 1064,
+      "sha256": "9674300c95608740e10ef88e8fbd6544c433af769e97e814c55254c43e4d1781",
+      "mode": 420
+    },
+    "source/host/Cargo.lock": {
+      "size": 54945,
+      "sha256": "f6353a3904dc6a7b603175f8f1594ba88bdbc36c5815c8e984a3617623431a62",
+      "mode": 420
+    },
+    "source/host/Cargo.toml": {
+      "size": 931,
+      "sha256": "27fad790832ad1dbea8a305763e195a084cfe4c6c6c7f3f4594d3d62200b9366",
+      "mode": 420
+    },
+    "source/host/src/credentials.rs": {
+      "size": 9430,
+      "sha256": "f154827dcd72c94a43b8fb35f246b4883b42ef5b8a790dd4ac37bce83bef4664",
+      "mode": 420
+    },
+    "source/host/src/main.rs": {
+      "size": 35401,
+      "sha256": "42fe40d178b8b2c8d787d6da404bfaba195e22c764051482a73868536e619d18",
+      "mode": 420
+    }
+  }
+}

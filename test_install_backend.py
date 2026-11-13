@@ -46,6 +46,7 @@ class BackendInstallerTests(unittest.TestCase):
             self.assertIn('EnvironmentFile="', next(output.glob("systemd-user/*.service.d/*.conf")).read_text())
             self.assertIn("OnUnitActiveSec=\nOnBootSec=15s\nOnUnitActiveSec=10s", next(output.glob("systemd-user/*.timer.d/*.conf")).read_text())
             self.assertIn("delay_upload 1", (output / "davfs2.conf.snippet").read_text())
+            self.assertTrue((output / "davfs2.conf.snippet").read_text().startswith(f'"[{root / "mount"}]"\n'))
             self.assertEqual((output / "performance.env").stat().st_mode & 0o777, 0o600)
             before = (output / "performance.env").read_bytes()
             self.assertNotEqual(subprocess.run(args, capture_output=True).returncode, 0)

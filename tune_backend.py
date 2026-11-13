@@ -153,7 +153,7 @@ def render_files(args, env_path):
         files[f"systemd-user/{unit}-sync.timer.d/90-performance.conf"] = timer
     options = davfs_options(args)
     if options:
-        files["davfs2.conf.snippet"] = f'["{args.mount}"]\n' + "".join(f"{key} {value}\n" for key, value in options.items())
+        files["davfs2.conf.snippet"] = f'"[{args.mount}]"\n' + "".join(f"{key} {value}\n" for key, value in options.items())
     return files
 
 
@@ -171,29 +171,33 @@ def merge_davfs(content, mount, options):
     start = end = None
     for index, line in enumerate(lines):
         text = line.strip()
-        if not text.startswith("["):
+        if not text.startswith(("[", '"[')):
             continue
-        # A section may have a trailing comment, but not an ambiguous quoted ']'.
-        match = re.fullmatch(r"\[\s*(.*?)\s*\]\s*(?:#.*)?", text)
-        if not match:
+        # davfs2 quotes the entire section token, brackets included. Unlike
+        # shell syntax, it rejects quotes embedded in an unquoted token.
+        token = r'(?:"(?:[^"\\]|\\.)*"|(?:[^ \t"\\#]|\\[ \t"\\#])+)'
+        if not re.fullmatch(token + r"\s*(?:#.*)?", text):
             raise ValueError("Invalid davfs section; review davfs2.conf manually")
-        fields = shlex.split(match[1])
-        if len(fields) != 1:
+        lexer = shlex.shlex(text, posix=True)
+        lexer.whitespace_split = True
+        lexer.quotes = '"'
+        fields = list(lexer)
+        if len(fields) != 1 or not fields[0].startswith("[") or not fields[0].endswith("]"):
             raise ValueError("Invalid davfs mount section")
         if start is not None and end is None:
             end = index
-        if fields[0] == str(mount):
+        if fields[0][1:-1] == str(mount):
             if start is not None:
                 raise ValueError("Duplicate davfs mount section; review it manually")
             start = index + 1
             end = None
     if start is None:
         return content + ("" if not content or content.endswith("\n") else "\n") + (
-            f'["{mount}"]\n' + "".join(f"{key} {value}\n" for key, value in options.items()))
+            f'"[{mount}]"\n' + "".join(f"{key} {value}\n" for key, value in options.items()))
     end = len(lines) if end is None else end
     result, seen = [], set()
     for line in lines[start:end]:
-        fields = shlex.split(line, comments=True)
+        fields = line.lstrip().split(maxsplit=1)
         if fields and fields[0] in options:
             key = fields[0]
             if key not in seen:

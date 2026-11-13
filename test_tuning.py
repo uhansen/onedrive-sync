@@ -114,18 +114,35 @@ class TuningTests(unittest.TestCase):
 
     def test_merge_preserves_globals_custom_options_and_unrelated_sections(self):
         mount = self.root / "OneDrive"
-        original = (f'# global\ncache_size 50\n["{mount}"] # selected\n'
+        original = (f'# global\ncache_size 50\n"[{mount}]" # selected\n'
                     '  delay_upload 10 # old\nuse_locks 0\nfile_refresh 30\n'
-                    'delay_upload 20\n["/other"]\ncache_size 99\n# retained\n')
+                    'delay_upload 20\n[/other]\ncache_size 99\n# retained\n')
         merged = tuning.merge_davfs(original, mount, {"delay_upload": 0, "file_refresh": 0, "cache_size": 512})
         self.assertTrue(merged.startswith('# global\ncache_size 50\n'))
         self.assertIn("use_locks 0\n", merged)
         self.assertEqual(merged.count("delay_upload"), 1)
-        self.assertIn('["/other"]\ncache_size 99\n# retained\n', merged)
+        self.assertIn('[/other]\ncache_size 99\n# retained\n', merged)
         self.assertIn("file_refresh 0\ncache_size 512\n", merged)
         self.assertEqual(tuning.merge_davfs(merged, mount, {"delay_upload": 0, "file_refresh": 0, "cache_size": 512}), merged)
         with self.assertRaisesRegex(ValueError, "Duplicate"):
-            tuning.merge_davfs(f'["{mount}"]\n["{mount}"]\n', mount, {"cache_size": 512})
+            tuning.merge_davfs(f'"[{mount}]"\n"[{mount}]"\n', mount, {"cache_size": 512})
+
+    def test_davfs_section_quotes_include_brackets_as_required_by_davfs2(self):
+        # davfs2.conf(5), GENERAL SYNTAX RULES: "[/home/otto/with space]".
+        for name in ("OneDrive", "OneDrive with spaces", "Owner's OneDrive"):
+            with self.subTest(name=name):
+                args = self.args("--preset", "low-latency")
+                args.mount = self.root / name
+                snippet = tuning.render_files(args, args.output / "performance.env")["davfs2.conf.snippet"]
+                expected_header = f'"[{args.mount}]"\n'
+                self.assertTrue(snippet.startswith(expected_header))
+                self.assertTrue(tuning.merge_davfs("", args.mount, {"cache_size": 512}).startswith(expected_header))
+                for header in (f'"[{args.mount}]"', "[" + str(args.mount).replace(" ", "\\ ") + "]"):
+                    original = f"{header} # selected\ncache_size 50\n[/other]\ncache_size 73\n"
+                    merged = tuning.merge_davfs(original, args.mount, {"cache_size": 512})
+                    self.assertEqual(merged, f"{header} # selected\ncache_size 512\n[/other]\ncache_size 73\n")
+                with self.assertRaisesRegex(ValueError, "Invalid davfs section"):
+                    tuning.merge_davfs(f'["{args.mount}"]\ncache_size 50\n', args.mount, {"cache_size": 512})
 
     def test_capability_gate_precedes_service_changes_and_backup(self):
         args = self.args("--preset", "low-latency", "--apply")
@@ -158,7 +175,7 @@ class TuningTests(unittest.TestCase):
         self.active.update(original_states)
         davfs = self.root / ".davfs2/davfs2.conf"
         davfs.parent.mkdir()
-        original = f'# custom\n["{args.mount}"]\ndelay_upload 7\nuse_locks 0\n["/other"]\ncache_size 73\n'.encode()
+        original = f'# custom\n"[{args.mount}]"\ndelay_upload 7\nuse_locks 0\n[/other]\ncache_size 73\n'.encode()
         davfs.write_bytes(original)
         davfs.chmod(0o640)
         tuning.render(args)
